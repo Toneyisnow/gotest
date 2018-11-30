@@ -2,22 +2,34 @@ package main
 
 import (
 	"fmt"
-	"node"
-	"os"
-	"io/ioutil"
-	"encoding/json"
-	"strconv"
+	"time"
+	"services"
 )
 
-// User struct which contains a name
-// a type and a list of social links
-type Config struct {
-	ServerPort   int `json:"server_port"`
-	PeerPort     int `json:"peer_port"`
-}
 
 func main() {
+
+	server := new(services.NodeServer)
+
+	server.Initialize()
+
+	fmt.Println("Server Starting...")
+	server.Start()
+	fmt.Println("Server Started.")
+
+	time.Sleep(10 * time.Second)
+
+	fmt.Println("Server Stopping...")
+	server.Stop()
+	fmt.Println("Server Stopped.")
+
+	/*
+	jsonString := `{ "HostUrl":"localhost:9999", "Identifier":"1" }`
 	
+	node := objectmodels.ReadNodeFromJson(jsonString)
+	fmt.Println("Node: " + node.HostUrl)
+
+
 	jsonFile, err := os.Open("node-config.json")
 	// if we os.Open returns an error then handle it
 	if err != nil {
@@ -32,10 +44,10 @@ func main() {
 	fmt.Println("Server Port: " + strconv.Itoa(mainConfig.ServerPort))
 	
 	
-	e := node.Engine { ServerPort: mainConfig.ServerPort, PeerPort: mainConfig.PeerPort }
+	e := objectmodels.Engine { ServerPort: mainConfig.ServerPort, PeerPort: mainConfig.PeerPort }
 	
 	e.Start("abcde")
-	
+	*/
 	
 	fmt.Println("Exit.")
 }
