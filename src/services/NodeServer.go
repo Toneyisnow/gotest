@@ -2,9 +2,11 @@ package services
 
 import (
 	"flag"
+	"github.com/golang/protobuf/proto"
 	"log"
 	"net/http"
 	"strconv"
+	"objectmodels/network"
 	"github.com/gorilla/websocket"
 )
 var upgrader = websocket.Upgrader{} // use default options
@@ -25,7 +27,7 @@ func (this *NodeServer) Initialize() {
 
 func (this *NodeServer) Start() {
 
-	var serveraddress = "localhost:" + strconv.Itoa(this.config.ServerPort)
+	var serveraddress = "localhost:" + strconv.Itoa(this.config.Self.ServerPort)
 	var serveraddr = flag.String("serveraddr", serveraddress, "http service serveraddress")
 
 	// Start the server
@@ -58,13 +60,18 @@ func handleEventMessage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer c.Close()
+
 	for {
 		mt, message, err := c.ReadMessage()
 		if err != nil {
 			log.Println("read:", err)
 			break
 		}
-		log.Printf("recv: %s %s", message, mt)
+
+		mess := new(network.BaseMessage)
+		proto.Unmarshal(message, mess)
+
+		log.Printf("recv: OwnerId=%s Hash=%s %s", mess.OwnerId, mess.Hash, mt)
 	}
 }
 

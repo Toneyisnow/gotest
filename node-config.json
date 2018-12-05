@@ -1,4 +1,16 @@
 {
-  "server_port": 8082,
-  "peer_port": 8081
+  "self" : {
+    "id"  : "1",
+    "host_url": "localhost:8082",
+    "public_key" : "l2390234",
+    "server_port" : 8082
+  },
+  "network_peers": [
+      {
+      "id"  : "2",
+      "host_url": "localhost:8082",
+      "public_key" : "l2390234",
+      "server_port" : 8082
+    }
+  ]
 }

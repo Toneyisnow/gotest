@@ -1,0 +1,32 @@
+syntax = "proto3";
+package messages;
+
+import "include/google/protobuf/timestamp.proto";
+// import "github.com/golang/protobuf/ptypes/timestamp";
+
+
+message BaseMessage {
+
+  enum MessageType {
+    SendEvents = 0;
+    AddNode = 1;
+    SyncEvents = 2;
+  }
+  
+  message Transaction {
+    string owner_id = 1;
+    string hash = 2;
+	string in_account = 3;
+	string out_account = 4;
+  }
+
+  string owner_id = 1;
+  string hash = 2;
+  google.protobuf.Timestamp time_stamp = 3;
+  
+  MessageType type = 4;
+  
+  repeated Transaction transactions = 5;
+
+  
+}

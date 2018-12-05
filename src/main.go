@@ -2,12 +2,24 @@ package main
 
 import (
 	"fmt"
-	"time"
 	"services"
+	"time"
 )
 
 
 func main() {
+
+	go StartServer()
+
+	time.Sleep(3 * time.Second)
+
+	StartClient()
+
+	
+	fmt.Println("Exit.")
+}
+
+func StartServer() {
 
 	server := new(services.NodeServer)
 
@@ -22,32 +34,23 @@ func main() {
 	fmt.Println("Server Stopping...")
 	server.Stop()
 	fmt.Println("Server Stopped.")
+}
 
-	/*
-	jsonString := `{ "HostUrl":"localhost:9999", "Identifier":"1" }`
-	
-	node := objectmodels.ReadNodeFromJson(jsonString)
-	fmt.Println("Node: " + node.HostUrl)
+func StartClient() {
 
+	client := new(services.NodeClient)
+	client.Initialize()
 
-	jsonFile, err := os.Open("node-config.json")
-	// if we os.Open returns an error then handle it
-	if err != nil {
-		fmt.Println(err)
-	}
-	defer jsonFile.Close()
-	
-	byteValue, _ := ioutil.ReadAll(jsonFile)
-	var mainConfig Config
-	json.Unmarshal(byteValue, &mainConfig)
+	config := services.LoadConfigFromFile()
+	client.Connect(&config.NetworkPeers[0])
 
-	fmt.Println("Server Port: " + strconv.Itoa(mainConfig.ServerPort))
-	
-	
-	e := objectmodels.Engine { ServerPort: mainConfig.ServerPort, PeerPort: mainConfig.PeerPort }
-	
-	e.Start("abcde")
-	*/
-	
-	fmt.Println("Exit.")
+	client.SendMessage("Good to see that")
+
+	time.Sleep(time.Second)
+
+	client.SendMessage("Good to see that")
+
+	time.Sleep(time.Second)
+	client.SendMessage("Good to see that")
+
 }

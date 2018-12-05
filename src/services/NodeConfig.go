@@ -9,10 +9,16 @@ import (
 
 type NodeConfig struct {
 
-	HostUrl string `json:"HostUrl"`			// The Url Host of the node
+	Self *NodeInfo `json:"self"`
+	NetworkPeers []NodeInfo  `json:"network_peers"`
+}
+
+type NodeInfo struct {
+
+	Identifier string `json:"id"`
+	PublickKey string `json:"public_key"`
+	HostUrl string `json:"host_url"`			// The Url Host of the node
 	ServerPort int `json:"server_port"`
-	Identifier string `json:"Identifier"`
-	PublickKey string `json:"PublicKey"`
 }
 
 func LoadConfigFromFile() *NodeConfig {
