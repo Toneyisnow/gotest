@@ -45,6 +45,9 @@ func (this *NodeClient) SendMessage(message string) {
 	mess := new (network.BaseMessage)
 	mess.OwnerId = "123456"
 	mess.Hash = "xxxxxx"
+	mess.Type = network.BaseMessage_SendEvents
+	mess.SendEventMessage = new(network.SendEventMessage)
+	mess.SendEventMessage.EventId = "4321"
 
 	messageBuffer, _ := proto.Marshal(mess)
 	err := this.connection.WriteMessage(websocket.TextMessage, messageBuffer)

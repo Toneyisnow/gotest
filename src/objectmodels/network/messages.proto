@@ -1,8 +1,7 @@
 syntax = "proto3";
-package messages;
+package network;
 
 import "include/google/protobuf/timestamp.proto";
-// import "github.com/golang/protobuf/ptypes/timestamp";
 
 
 message BaseMessage {
@@ -28,5 +27,18 @@ message BaseMessage {
   
   repeated Transaction transactions = 5;
 
-  
+
+  SendEventMessage send_event_message = 6;
+  CommandMessage command_message = 7;
+
+}
+
+message SendEventMessage {
+
+  string event_id = 1;
+}
+
+message CommandMessage {
+
+  string command_id = 1;
 }

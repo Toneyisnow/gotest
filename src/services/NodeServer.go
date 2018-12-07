@@ -72,6 +72,11 @@ func handleEventMessage(w http.ResponseWriter, r *http.Request) {
 		proto.Unmarshal(message, mess)
 
 		log.Printf("recv: OwnerId=%s Hash=%s %s", mess.OwnerId, mess.Hash, mt)
+
+		if (mess.Type == network.BaseMessage_SendEvents) {
+			log.Printf("recv: EventId=%s %s", mess.SendEventMessage.EventId, mt)
+
+		}
 	}
 }
 
