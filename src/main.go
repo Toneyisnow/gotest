@@ -9,14 +9,7 @@ import (
 
 func main() {
 
-	go StartServer()
-
-	time.Sleep(3 * time.Second)
-
-	StartClient()
-
-	
-	fmt.Println("Exit.")
+	services.ExecuteNode()
 }
 
 func StartServer() {
@@ -47,7 +40,9 @@ func StartClient() {
 	client.SendMessage("Good to see that")
 
 	time.Sleep(time.Second)
+	client.SendMessage("Good to see that")
 
+	time.Sleep(time.Second)
 	client.SendMessage("Good to see that")
 
 	time.Sleep(time.Second)

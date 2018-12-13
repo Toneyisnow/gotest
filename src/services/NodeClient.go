@@ -6,6 +6,7 @@ import (
 	"github.com/gorilla/websocket"
 	"log"
 	"net/url"
+	"networking/pb"
 	"objectmodels/network"
 	"strconv"
 )
@@ -15,12 +16,25 @@ type NodeClient struct {
 	config *NodeConfig
 	connection *websocket.Conn
 	isConnected bool
+	messageIndex int
+	_messageQueue  chan *pb.NetMessage
 }
 
-func (this *NodeClient) Initialize() {
+func (this *NodeClient) Initialize(nodeId string, messageQueue chan *pb.NetMessage) {
 
 	this.config = LoadConfigFromFile()
 	this.isConnected = false
+	this.messageIndex = 100
+
+	this._messageQueue = messageQueue
+}
+
+func (this *NodeClient) Start() {
+
+	for {
+		message := <- this._messageQueue
+		this.SendMessage(message)
+	}
 }
 
 func (this *NodeClient) Connect(toServer *NodeInfo) {
@@ -36,7 +50,8 @@ func (this *NodeClient) Connect(toServer *NodeInfo) {
 
 }
 
-func (this *NodeClient) SendMessage(message string) {
+
+func (this *NodeClient) SendMessage(message *pb.NetMessage) {
 
 	if (!this.isConnected) {
 		return
@@ -44,7 +59,32 @@ func (this *NodeClient) SendMessage(message string) {
 
 	mess := new (network.BaseMessage)
 	mess.OwnerId = "123456"
-	mess.Hash = "xxxxxx"
+	mess.Hash = strconv.Itoa(this.messageIndex)
+	this.messageIndex ++
+
+	mess.Type = network.BaseMessage_SendEvents
+	mess.SendEventMessage = new(network.SendEventMessage)
+	mess.SendEventMessage.EventId = "4321"
+
+	messageBuffer, _ := proto.Marshal(mess)
+	err := this.connection.WriteMessage(websocket.TextMessage, messageBuffer)
+	if err != nil {
+		log.Println("write:", err)
+		return
+	}
+}
+
+func (this *NodeClient) SendMessage2(message string) {
+
+	if (!this.isConnected) {
+		return
+	}
+
+	mess := new (network.BaseMessage)
+	mess.OwnerId = "123456"
+	mess.Hash = strconv.Itoa(this.messageIndex)
+	this.messageIndex ++
+
 	mess.Type = network.BaseMessage_SendEvents
 	mess.SendEventMessage = new(network.SendEventMessage)
 	mess.SendEventMessage.EventId = "4321"

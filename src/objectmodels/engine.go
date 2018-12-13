@@ -1,5 +1,9 @@
 package objectmodels
 
+///
+/// This is a legacy file, will remove it
+///
+
 import (
 	"flag"
 	"fmt"

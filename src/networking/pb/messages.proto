@@ -1,0 +1,53 @@
+syntax = "proto3";
+package pb;
+
+import "google/protobuf/timestamp.proto";
+
+enum NetMessageType {
+
+    SendEvents = 0;
+    AddNode = 1;
+    SyncEvents = 2;
+}
+
+message NetMessage {
+
+    string owner_id = 1;
+    string hash = 2;
+    google.protobuf.Timestamp time_stamp = 3;
+    NetMessageType messageType = 4;
+
+    // Here are the different types of messages
+    SendEventMessage send_event_message = 6;
+    CommandMessage command_message = 7;
+
+}
+
+message NetEvent {
+
+    string event_id = 1;
+    string owner_id = 2;
+    string hash = 3;
+    google.protobuf.Timestamp time_stamp = 4;
+
+    repeated NetTransaction transactions = 5;
+
+}
+
+message NetTransaction {
+
+    string owner_id = 1;
+    string hash = 2;
+    string in_account = 3;
+    string out_account = 4;
+}
+
+message SendEventMessage {
+
+    repeated NetEvent events = 1;
+}
+
+message CommandMessage {
+
+    string command_id = 1;
+}

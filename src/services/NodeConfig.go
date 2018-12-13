@@ -37,3 +37,8 @@ func LoadConfigFromFile() *NodeConfig {
 
 	return mainConfig
 }
+
+func (this *NodeConfig) GetPeerById(nodeId string) *NodeInfo {
+
+	return &this.NetworkPeers[0]
+}
