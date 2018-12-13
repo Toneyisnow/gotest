@@ -1,6 +1,7 @@
 package services
 
 import (
+	"common"
 	"flag"
 	"github.com/czsilence/gorocksdb"
 	"github.com/golang/protobuf/proto"
@@ -21,14 +22,14 @@ type NodeServer struct {
 	ServerPort int
 
 	httpServer *http.Server
-	config *NodeConfig
+	config *common.NodeConfig
 
 	messageQueue chan *pb.NetMessage
 }
 
 func (this *NodeServer) Initialize(msgQueue chan *pb.NetMessage) {
 
-	this.config = LoadConfigFromFile()
+	this.config = common.LoadConfigFromFile()
 	this.messageQueue = msgQueue
 }
 
@@ -80,9 +81,13 @@ func (this *NodeServer) handleEventMessage(w http.ResponseWriter, r *http.Reques
 
 		log.Printf("recv: OwnerId=%s Hash=%s %s", mess.OwnerId, mess.Hash, mt)
 
-		if (mess.Type == pb.NetMessageType_SendEvents) {
-			log.Printf("recv: EventId=%s %s", mess.SendEventMessage.Events[0].EventId, mt)
+		if (mess.MessageType == pb.NetMessageType_SendEvents) {
 
+			even := mess.SendEventMessage.Events[0]
+
+			if (even != nil) {
+				log.Printf("recv: EventId=%s %s", mess.SendEventMessage.Events[0].EventId, mt)
+			}
 		}
 
 		this.messageQueue <- mess
@@ -112,7 +117,7 @@ func (this *NodeServer) handleEventMessage2(w http.ResponseWriter, r *http.Reque
 
 		log.Printf("recv: OwnerId=%s Hash=%s %s", mess.OwnerId, mess.Hash, mt)
 
-		if (mess.Type == pb.NetMessageType_SendEvents) {
+		if (mess.MessageType == pb.NetMessageType_SendEvents) {
 			log.Printf("recv: EventId=%s %s", mess.SendEventMessage.Events[0].EventId, mt)
 
 		}

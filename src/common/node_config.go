@@ -1,10 +1,10 @@
-package services
+package common
 
 import (
-	"encoding/json"
-	"fmt"
-	"io/ioutil"
-	"os"
+"encoding/json"
+"fmt"
+"io/ioutil"
+"os"
 )
 
 type NodeConfig struct {
@@ -42,3 +42,4 @@ func (this *NodeConfig) GetPeerById(nodeId string) *NodeInfo {
 
 	return &this.NetworkPeers[0]
 }
+

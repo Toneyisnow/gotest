@@ -9,7 +9,7 @@ type SWAccount struct {
 func CreateAccount(accId string, address string) *SWAccount {
 
 	acc := new(SWAccount)
-	acc.AccountId = acdId
+	acc.AccountId = accId
 	acc.Address = address
 
 	return acc

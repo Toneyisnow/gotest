@@ -1,12 +1,12 @@
 package types
 
-import "services"
+import "common"
 
 type SWNode struct {
 	NodeId string
 }
 
-func CreateNode(info *services.NodeInfo) *SWNode {
+func CreateNode(info *common.NodeInfo) *SWNode {
 
 	node := new (SWNode)
 	node.NodeId = info.Identifier

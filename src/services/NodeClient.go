@@ -1,6 +1,7 @@
 package services
 
 import (
+	"common"
 	"flag"
 	"github.com/golang/protobuf/proto"
 	"github.com/gorilla/websocket"
@@ -13,7 +14,7 @@ import (
 
 type NodeClient struct {
 
-	config *NodeConfig
+	config *common.NodeConfig
 	connection *websocket.Conn
 	isConnected bool
 	messageIndex int
@@ -22,22 +23,34 @@ type NodeClient struct {
 
 func (this *NodeClient) Initialize(nodeId string, messageQueue chan *pb.NetMessage) {
 
-	this.config = LoadConfigFromFile()
+	this.config = common.LoadConfigFromFile()
 	this.isConnected = false
 	this.messageIndex = 100
 
 	this._messageQueue = messageQueue
+
+	this.Connect(this.config.GetPeerById(nodeId))
 }
 
 func (this *NodeClient) Start() {
 
+	log.Println("NodeClient started.")
+
 	for {
 		message := <- this._messageQueue
+
+		log.Println("Got message, sending it...")
 		this.SendMessage(message)
 	}
 }
 
-func (this *NodeClient) Connect(toServer *NodeInfo) {
+func (this *NodeClient) Connect(toServer *common.NodeInfo) {
+
+	if (toServer == nil) {
+		log.Println("Connect failed: toServer is nil.")
+		this.isConnected = false
+		return
+	}
 
 	var peeraddress = "localhost:" + strconv.Itoa(toServer.ServerPort)
 	var peeraddr = flag.String("peeraddr", peeraddress, "http service peeraddress")
@@ -57,16 +70,10 @@ func (this *NodeClient) SendMessage(message *pb.NetMessage) {
 		return
 	}
 
-	mess := new (network.BaseMessage)
-	mess.OwnerId = "123456"
-	mess.Hash = strconv.Itoa(this.messageIndex)
-	this.messageIndex ++
+	log.Printf("SendMessage: pb.NetMessage=[%s, %s]", message.Hash, message.OwnerId)
 
-	mess.Type = network.BaseMessage_SendEvents
-	mess.SendEventMessage = new(network.SendEventMessage)
-	mess.SendEventMessage.EventId = "4321"
-
-	messageBuffer, _ := proto.Marshal(mess)
+	messageBuffer, _ := proto.Marshal(message)
+	log.Printf("Message protobuf=[%s]", messageBuffer)
 	err := this.connection.WriteMessage(websocket.TextMessage, messageBuffer)
 	if err != nil {
 		log.Println("write:", err)

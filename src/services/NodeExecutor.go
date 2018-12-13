@@ -1,8 +1,10 @@
 package services
 
 import (
+	"common"
 	"components/types"
 	"fmt"
+	"log"
 	"networking"
 	"networking/pb"
 	"time"
@@ -51,10 +53,12 @@ func HandleMessage(messageQueue chan *pb.NetMessage) {
 	for {
 		rawMessage := <- messageQueue
 
+		log.Printf("HandleMessage: got message from rawMessageQueue")
+
 		if (rawMessage.MessageType == pb.NetMessageType_SendEvents) {
 
 			event1 := rawMessage.SendEventMessage.Events[0]
-			fmt.Println("HandleMessage - EventId: %s", event1.EventId)
+			fmt.Printf("HandleMessage - EventId: %s", event1.EventId)
 		}
 	}
 
@@ -65,7 +69,7 @@ func TestingClient() {
 	clientManager := new(NodeClientManager)
 	clientManager.Initialize(100)
 
-	config := LoadConfigFromFile()
+	config := common.LoadConfigFromFile()
 
 	// Create Fake Transaction Event
 	node := types.CreateNode(config.Self)
@@ -90,13 +94,15 @@ func TestingClient() {
 	event2.AddTransaction(tran22)
 	event2.AddTransaction(tran23)
 
-	events := make([]*types.SWEvent, 2)
-	events = append(events, event1, event2)
+	events := []*types.SWEvent {event1, event2}
 
 
 	netMessage := networking.ComposeNetMessage(events)
 
-	clientManager.SendToNode(1, netMessage)
+	clientManager.SendToNode("2", netMessage)
+
+	time.Sleep(2 * time.Second)
+	clientManager.SendToNode("2", netMessage)
 
 
 	/*

@@ -1,6 +1,7 @@
 package services
 
 import (
+	"common"
 	"networking/pb"
 	"time"
 )
@@ -16,7 +17,7 @@ type NodeClientManager struct {
 
 	_clientMessageQueue map[string]chan *pb.NetMessage
 
-	_nodeConfig *NodeConfig
+	_nodeConfig *common.NodeConfig
 }
 
 func (this *NodeClientManager) Initialize (maxActiveClient int) {
@@ -26,8 +27,9 @@ func (this *NodeClientManager) Initialize (maxActiveClient int) {
 
 	this._clientList = make(map[string]*NodeClient)
 	this._clientLastVisitStamp = make(map[string]time.Time)
+	this._clientMessageQueue = make(map[string]chan *pb.NetMessage)
 
-	this._nodeConfig = LoadConfigFromFile()
+	this._nodeConfig = common.LoadConfigFromFile()
 }
 
 func (this *NodeClientManager) SendToNode(nodeId string, message *pb.NetMessage) {
