@@ -1,7 +1,7 @@
 syntax = "proto3";
 package network;
 
-import "include/google/protobuf/timestamp.proto";
+import "google/protobuf/timestamp.proto";
 
 
 message BaseMessage {

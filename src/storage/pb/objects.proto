@@ -1,0 +1,58 @@
+syntax = "proto3";
+package pb;
+
+import "google/protobuf/timestamp.proto";
+
+
+
+message DBAccount {
+
+    string account_id = 1;
+}
+
+message DBTranscation {
+
+    string transaction_hash = 1;
+    string from_account_id = 2;
+    string to_account_id = 3;
+    int64  amount = 4;
+}
+
+message DBEventRaw {
+
+    string event_id = 1;
+    string owner_id = 2;
+    string self_parent_id = 3;
+    string peer_parent_id = 4;
+
+    repeated string transaction_hash = 5;
+}
+
+message DBEventIndexes {
+
+    int64 index = 1;
+    string event_id = 2;
+}
+
+message DBEventDag {
+
+    string event_id = 1;
+    string self_parent_id = 2;
+    string peer_parent_id = 3;
+}
+
+enum DBEventState {
+
+    Ordinary = 0;
+    Accepted = 1;
+    Discarded = 2;
+}
+
+message DBEventStatus {
+
+    string event_id = 1;
+    bool is_queen = 2;
+    bool is_main_queen = 3;
+    int64 hive_level = 4;
+    DBEventState state = 5;
+}
