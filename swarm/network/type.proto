@@ -1,0 +1,61 @@
+syntax = "proto3";
+
+package network;
+//////////////////////////////////////////////////
+// joint
+
+enum NetMessageType {
+    Connect = 0;
+    Challenge = 1;
+    ChallengeResponse = 2;
+    Heartbeat = 3;
+    Event = 4;
+}
+
+message NetMessage {
+
+    string message_id = 1;
+
+    NetMessageType message_type = 2;
+
+    oneof data {
+        ConnectMessage connect_message = 11;
+        ChallengeMessage challenge_message = 12;
+        ChallengeResponseMessage challenge_response_message = 13;
+        HeartbeatMessage heartbeat_message = 14;
+        EventMessage event_message = 15;
+    }
+}
+
+// types of message
+
+message ConnectMessage {
+
+    string host_address = 1;
+    string public_key = 2;
+    string signature = 3;
+    string challenge = 4;
+}
+
+message ChallengeMessage {
+
+    string challenge = 1;
+}
+
+message ChallengeResponseMessage {
+
+    string signature = 1;
+    string challenge = 2;
+}
+
+message HeartbeatMessage {
+
+    int32 ran_number = 1;
+}
+
+message EventMessage {
+
+    string signature = 1;
+    string hash = 2;
+    bytes data = 3;
+}
