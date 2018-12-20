@@ -1,12 +1,9 @@
 package network
 
 import (
-	"encoding/base64"
-	"github.com/smartswarm/core/base"
-	"github.com/smartswarm/core/network/connection"
-	"github.com/smartswarm/core/sync_mode"
+	"../common"
 	"github.com/smartswarm/go/log"
-	"github.com/smartswarm/go/timer"
+	"golang.org/x/crypto/openpgp/errors"
 	"sync"
 )
 
@@ -19,7 +16,7 @@ const (
 type NetProcessor struct {
 
 	_option *NetOption
-	_eventHandler *EventHandler
+	_eventHandler EventHandler
 	_contextManager *NetContextManager
 	_topology *NetTopology
 
@@ -38,7 +35,9 @@ func CreateProcessor(topo *NetTopology, handler EventHandler) *NetProcessor {
 	processor := new(NetProcessor)
 	processor._option = DefaultOption()
 	processor._topology = topo
-	processor._eventHandler = &handler
+	processor._eventHandler = handler
+
+	processor.Initialize()
 	processor._status = NetManagerStatus_Idle
 	return processor
 }
@@ -47,7 +46,7 @@ func (this *NetProcessor) GetOption() *NetOption {
 	return this._option
 }
 
-func (this *NetProcessor) GetEventHandler() *EventHandler {
+func (this *NetProcessor) GetEventHandler() EventHandler {
 	return this._eventHandler
 }
 
@@ -68,7 +67,7 @@ func (this *NetProcessor) Start() {
 
 	this._status = NetManagerStatus_Running
 
-	go StartWebSocketListen(this._topology.Self().Port, this.HandleIncoming)
+	go StartWebSocketListen(this._topology.Self().Port, this.HandleIncomingConnection)
 
 	// Start to connect to peers
 
@@ -95,59 +94,19 @@ func (this *NetProcessor) Stop() {
 	this._status = NetManagerStatus_Idle
 }
 
-func (this *NetProcessor) CreateOrGetOutgoingContext(device *NetDevice) {
+func (this *NetProcessor) HandleIncomingConnection(socket *NetWebSocket) {
 
+	log.I("[network] handle incoming connection start. Socket=", socket)
 
-}
+	//// Why closing it?
+	//// defer socket.Close()
 
+	remoteHost := socket.RemoteHostAddress().String()
 
-func (m *Manager) connectToPeer(url string, onOpen OpenCallback) (ctx *WSContext, err error) {
-	log.I("[network] will connect to:", url)
+	remoteHostAddress := common.ComposeHostAddress(remoteHost)
 
-	var conn connection.Conn
-	if conn, err = connection.Dial(url); err != nil {
-		log.W("[network] connect failed!", err)
-		// retry connect
-		timer.SetTimeout(func() {
-			m.connectToPeer(url, onOpen)
-		}, 5000)
-		return
-	} else {
-		log.I("[network] connected to:", conn.RemoteAddr())
-	}
-
-	ctx = new(WSContext)
-	ctx.NewOutgoing(conn, url)
-	m.ctx_mgr.add(ctx)
-
-	// 订阅消息
-	if !sync_mode.IsLight() {
-		go m.subscribe(ctx)
-	}
-
-	// 如果定义了外部连接，扩散之
-	if pub_url, ok := m.Owner().Config().GetString("pub_url"); ok && pub_url != "" {
-		ctx.SendNotify("my_url", pub_url)
-	}
-
-	m.Owner().EventMgr().Emit("connected", ctx)
-
-	go m._message_loop(ctx)
-
-	if onOpen != nil {
-		onOpen(nil, ctx)
-	}
-
-	return ctx, nil
-}
-
-func (this *NetProcessor) HandleIncoming(socket *NetWebSocket) {
-
-	defer socket.Close()
-
-	ip := socket.RemoteHostAddress().String()
-	if len(ip) <= 0 {
-		log.E("[network] invalid remote ip.")
+	if remoteHostAddress == nil || !remoteHostAddress.IsValid() {
+		log.E("[network] invalid remote address.")
 		return
 	}
 
@@ -155,32 +114,16 @@ func (this *NetProcessor) HandleIncoming(socket *NetWebSocket) {
 
 	// TODO: 小黑屋，1小时内有invalid的节点事件
 
-	log.I("[network] receive new connection:", ip)
+	log.I("[network] receive new connection:", remoteHost)
 
-	device := this._topology.GetPeerDeviceByAddress(ip)
+	device := this._topology.GetPeerDeviceByIP(remoteHostAddress.IpAddress)
 
 	if (device == nil) {
 		log.I("client address is not in white list, ignore it.")
 		return
 	}
 
-	context := CreateIncomingContext(socket, device)
-	this._contextManager.Add(context)
-
-	// 发送版本号
-	// context.SendNotify("version", m.Owner().Ver())
-
-	// challenge
-	if (this._option._needChallenge) {
-		log.I("[network] require challenge...")
-		var challenge string = base64.StdEncoding.EncodeToString(base.RandomBytes(30))
-		context.SetMetadata("challenge", challenge)
-
-		message := ComposeChallengeMessage("", "ran_chars_here")
-		context.SendMessage(message)
-	}
-
-	context.Open()
+	this._contextManager.CreateIncomingContext(socket, device)
 
 	/*
 	// 订阅消息
@@ -190,10 +133,58 @@ func (this *NetProcessor) HandleIncoming(socket *NetWebSocket) {
 	m.Owner().EventMgr().Emit("connected", ctx)
 	*/
 
+	log.I("[network] handle incoming connection end.")
 }
 
+// Deprecated?
 func (this *NetProcessor) HandleMessage(context *NetContext, rawMessage *NetMessage) {
 
-	log.I("[network] receive message. context=[]:", context._index)
+	log.I("[network] receive message. context=[%d]:", context._index)
+
 
 }
+
+func (this *NetProcessor) SendEventToDeviceAsync(device *NetDevice, eventData []byte) (resultChan chan *NetEventResult) {
+
+	log.I2("[network] send event. device=[%s]:", device.GetHostUrl())
+
+	resultChan = make(chan *NetEventResult)
+
+	go func() {
+
+		event := ComposeEvent(eventData)
+
+		context, err := this._contextManager.CreateOrGetOutgoingContext(device)
+		if (err != nil || context == nil) {
+			resultChan <- ComposeEventResult(event, errors.InvalidArgumentError("CreateOrGetOutgoingContext failed."))
+			return
+		}
+
+		message := ComposeEventMessage("0", eventData)
+
+		context.SendMessage(message)
+
+		// Success
+		resultChan <- ComposeEventResult(event, nil)
+	}()
+
+	return resultChan
+}
+
+func (this *NetProcessor) SendEventToContextAsync(context *NetContext, eventData []byte, result chan *NetEventResult) {
+
+	log.I("[network] send message. context=[%d]:", context._index)
+
+	go func() {
+
+		event := ComposeEvent(eventData)
+		message := ComposeEventMessage("0", eventData)
+
+		context.SendMessage(message)
+
+		// Success
+		result <- ComposeEventResult(event, nil)
+	}()
+}
+
+

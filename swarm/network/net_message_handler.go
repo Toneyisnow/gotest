@@ -1,5 +1,29 @@
 package network
 
+import "../common/log"
+
+func HandleMessage(context *NetContext, message *NetMessage) {
+
+	if context == nil {
+		log.W("[network] handling message failed: context is nil.")
+		return
+	}
+
+	if message == nil {
+		log.W("[network] handling message failed: message is nil.")
+		return
+	}
+
+	log.I2("[network] handling message. context=[%s] message=[%s]", context._index, message.MessageId)
+	if message.MessageType == NetMessageType_Event {
+
+		log.I("[network] EventMessage detected.")
+		eventMessage := message.GetEventMessage()
+
+		context._manager._processor.GetEventHandler().HandleEventData(context, eventMessage.Data)
+	}
+}
+
 func ComposeChallengeMessage(messageId string, challenge string) *NetMessage {
 
 	message := new(NetMessage)

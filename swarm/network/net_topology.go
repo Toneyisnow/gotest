@@ -63,21 +63,36 @@ func LoadTopologySampleTest() *NetTopology {
 	return topology
 }
 
-func (this *NetTopology) GetPeerDeviceByAddress(address string) *NetDevice {
+func (this *NetTopology) GetPeerDeviceByIP(ipAddress string) *NetDevice {
 
-	if (len(address) == 0) {
+	if (len(ipAddress) == 0) {
 		return nil
 	}
 
 	for _, d := range this._peers {
 
 		// Here we are not sure HostUrl/IP which one will be used in testing phase, will update later
-		if (strings.Compare(d.HostUrl, address) == 0 || strings.Compare(d.IPAddress, address) == 0) {
+		if (strings.Compare(d.IPAddress, ipAddress) == 0) {
 			return d
 		}
 	}
 
 	return nil
+}
+
+func (this *NetTopology) GetAllRemoteDevices() []*NetDevice {
+
+	devices := make([]*NetDevice, 0)
+
+	for _, d := range this._peers {
+
+		// Exclude the self device
+		if (strings.Compare(d.GetHostUrl(), this._self.GetHostUrl()) != 0) {
+			devices = append(devices, d)
+		}
+	}
+
+	return devices
 }
 
 func (this *NetTopology) Self() *NetDevice {

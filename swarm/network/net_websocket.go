@@ -2,13 +2,15 @@ package network
 
 import (
 	"errors"
+	"flag"
 	"fmt"
 	"github.com/golang/protobuf/proto"
 	"github.com/gorilla/websocket"
+	"github.com/smartswarm/go/log"
 	"net"
 	"net/http"
-	"github.com/smartswarm/go/log"
-	"networking/pb"
+	"net/url"
+	"time"
 )
 
 var (
@@ -27,15 +29,29 @@ type ConnectionCallback func(socket *NetWebSocket)
 
 
 func (wc *NetWebSocket) ReadMessage() (message *NetMessage, err error) {
-	if mt, rawMessageBytes, re := wc._connection.ReadMessage(); re != nil {
+
+	log.I("[network] websocket read message.")
+
+	mt, rawMessageBytes, re := wc._connection.ReadMessage()
+	log.I("[network] raw message bytes: ", string(rawMessageBytes))
+
+	if  re != nil {
 		err = re
+
 	} else if mt != websocket.TextMessage {
 		err = e_unsupported_message_type
 	} else {
 
-		message := new(pb.NetMessage)
-		proto.Unmarshal(rawMessageBytes, message)
+		log.I("[network] raw message bytes: ", string(rawMessageBytes))
+		message = new(NetMessage)
+		pe := proto.Unmarshal(rawMessageBytes, message)
+		if pe != nil {
+			err = pe
+		} else {
+			return message, nil
+		}
 	}
+
 	return
 }
 
@@ -93,4 +109,34 @@ func StartWebSocketListen(serverPort int32, handler ConnectionCallback) {
 	} else {
 		log.W("[network] ======== serve failed! ========", err)
 	}
+}
+
+func StartWebSocketDial(device *NetDevice) (socket *NetWebSocket, err error) {
+
+	retryCount := 5
+	retryInterval := 3 * time.Second
+
+	var peeraddress = device.GetHostUrl()
+	var peeraddr = flag.String("peeraddr", peeraddress, "http service peeraddress")
+	u := url.URL{Scheme: "ws", Host: *peeraddr, Path: "/"}
+
+	for i := 0; i < retryCount; i++ {
+
+		_conn, _, de := websocket.DefaultDialer.Dial(u.String(), nil);
+		if (de == nil) {
+
+			log.W("[network] connect succeeded.")
+			socket = &NetWebSocket{_connection: _conn}
+			err = nil
+			return
+		}
+
+		err = de
+		log.W("[network] connect failed, retrying", err)
+		time.Sleep(retryInterval)
+	}
+
+	log.W("[network] connect failed!", err)
+
+	return
 }

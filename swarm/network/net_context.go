@@ -1,7 +1,7 @@
 package network
 
 import (
-	"github.com/smartswarm/go/log"
+	"../common/log"
 )
 
 type NetConextDirection int
@@ -55,13 +55,14 @@ func CreateOutgoingContext(socket *NetWebSocket, device *NetDevice) *NetContext 
 func (this *NetContext) GetAddress() string {
 
 	// For testing purpose, using IP + Port, so that can be tested on one machine
-	return this._device.HostUrl
+	return this._device.GetHostUrl()
 
 	// return this._device.IPAddress
 }
 
 func (this *NetContext) Open() {
 
+	log.I("Start NetContext.Open()")
 	// If incoming, message loop; if outgoing, start heartbeating
 	if (this._direction == NetConextDirection_Incoming) {
 
@@ -71,35 +72,57 @@ func (this *NetContext) Open() {
 		go this.HeartBeat()
 	}
 
+	log.I("End NetContext.Open()")
 }
 
 func (this *NetContext) Close() {
 
+	log.I("Start NetContext.Close()")
+
+	log.I("End NetContext.Close()")
 }
 
-func (this *NetContext) SendMessage(message *NetMessage) {
+func (this *NetContext) SendMessage(message *NetMessage) (err error) {
 
-
+	_, err = this._webSocket.Write(message)
+	return
 }
 
 /// This is the main loop function for context, listen to message and deliver to upper
 func (this *NetContext) MessageLoop() {
 
-	defer this.Close()
+	for {
+		/// log.I("Message looping...")
+
+		message, err := this._webSocket.ReadMessage()
+		if err != nil {
+			log.W("[network] error while read message:", err, this._device.GetHostUrl())
+			break
+		}
+		HandleMessage(this, message)
+
+		/// time.Sleep(time.Second)
+	}
+
+	/*
+	//// defer this.Close()
 
 	//conn.SetReadDeadline(time.Now().Add(300 * time.Second))
 	//conn.SetWriteDeadline(time.Now().Add(300 * time.Second))
 	for {
+
+		//// if this._webSocket.
+
 		message, err := this._webSocket.ReadMessage()
 		if err != nil {
-			log.W("[network] got err from conn:", err, this._device.HostUrl)
+			log.W("[network] error while read message:", err, this._device.GetHostUrl())
 			break
 		}
 
-		processor := this._manager._processor
-		processor.HandleMessage(this, message)
+		HandleMessage(this, message)
 	}
 	log.I("[network] finish connection:", this._index)
+	*/
 }
 
 func (this *NetContext) HeartBeat() {
