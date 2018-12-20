@@ -23,7 +23,7 @@ type NodeInfo struct {
 
 func LoadConfigFromFile() *NodeConfig {
 
-	jsonFile, err := os.Open("node-config.json")
+	jsonFile, err := os.Open("web-topology.json")
 
 	// if we os.Open returns an error then handle it
 	if err != nil {

@@ -1,0 +1,16 @@
+{
+  "self" : {
+    "id"  : "1",
+    "ip_address" : "127.0.0.1",
+    "public_key" : "l2390234",
+    "server_port" : 8081
+  },
+  "peers": [
+      {
+        "id"  : "2",
+        "ip_address" : "127.0.0.1",
+        "server_port" : 8082,
+        "public_key" : "l2390234"
+    }
+  ]
+}

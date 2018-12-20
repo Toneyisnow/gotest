@@ -1,27 +1,59 @@
 package network
 
-import "strings"
+import (
+	"encoding/json"
+	"fmt"
+	"io/ioutil"
+	"os"
+	"strings"
+)
 
 type NetTopology struct {
 
-	_self *NetDevice
-	_peers []*NetDevice
+	_self *NetDevice	 `json:"self"`
+	_peers []*NetDevice  `json:"peers"`
+}
+
+func LoadTopology() *NetTopology {
+
+	return LoadTopologySampleTest()
+	//// return LoadTopologyFromJsonFile("net-topology.json")
 }
 
 func LoadTopologyFromDB(dbName string) *NetTopology {
 
 	// Load the topology information from database
+	return LoadTopologySampleTest()
 
-	return LoadTopologyFromJson("")
 }
 
-func LoadTopologyFromJson(jsonString string) *NetTopology {
+func LoadTopologyFromJsonFile(jsonFileName string) *NetTopology {
+
+	jsonFile, err := os.Open(jsonFileName)
+
+	// if we os.Open returns an error then handle it
+	if err != nil {
+		fmt.Println(err)
+	}
+	defer jsonFile.Close()
+
+	byteValue, _ := ioutil.ReadAll(jsonFile)
+	topology := new(NetTopology)
+	json.Unmarshal(byteValue, topology)
+
+	return topology
+}
+
+func LoadTopologySampleTest() *NetTopology {
 
 	// Load Test data
 
+
+
+
 	topology := new(NetTopology)
 
-	topology._self = CreateDevice("127.0.0.1", 8883)
+	topology._self = CreateDevice("127.0.0.1", 8881)
 
 	peer1 := CreateDevice("127.0.0.1", 8881)
 	peer2 := CreateDevice("127.0.0.1", 8882)
@@ -31,7 +63,7 @@ func LoadTopologyFromJson(jsonString string) *NetTopology {
 	return topology
 }
 
-func (this *NetTopology) GetDeviceByAddress(address string) *NetDevice {
+func (this *NetTopology) GetPeerDeviceByAddress(address string) *NetDevice {
 
 	if (len(address) == 0) {
 		return nil
@@ -46,4 +78,8 @@ func (this *NetTopology) GetDeviceByAddress(address string) *NetDevice {
 	}
 
 	return nil
+}
+
+func (this *NetTopology) Self() *NetDevice {
+	return this._self
 }

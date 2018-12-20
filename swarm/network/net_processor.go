@@ -3,7 +3,10 @@ package network
 import (
 	"encoding/base64"
 	"github.com/smartswarm/core/base"
+	"github.com/smartswarm/core/network/connection"
+	"github.com/smartswarm/core/sync_mode"
 	"github.com/smartswarm/go/log"
+	"github.com/smartswarm/go/timer"
 	"sync"
 )
 
@@ -65,7 +68,16 @@ func (this *NetProcessor) Start() {
 
 	this._status = NetManagerStatus_Running
 
-	go StartWebSocketListen(this._topology._self.Port, this.HandleIncoming)
+	go StartWebSocketListen(this._topology.Self().Port, this.HandleIncoming)
+
+	// Start to connect to peers
+
+	selfDevice := this._topology._self
+	for _, peer := range this._topology._peers {
+		if (peer.IPAddress != selfDevice.IPAddress && peer.Port != selfDevice.Port) {
+
+		}
+	}
 
 }
 
@@ -83,6 +95,51 @@ func (this *NetProcessor) Stop() {
 	this._status = NetManagerStatus_Idle
 }
 
+func (this *NetProcessor) CreateOrGetOutgoingContext(device *NetDevice) {
+
+
+}
+
+
+func (m *Manager) connectToPeer(url string, onOpen OpenCallback) (ctx *WSContext, err error) {
+	log.I("[network] will connect to:", url)
+
+	var conn connection.Conn
+	if conn, err = connection.Dial(url); err != nil {
+		log.W("[network] connect failed!", err)
+		// retry connect
+		timer.SetTimeout(func() {
+			m.connectToPeer(url, onOpen)
+		}, 5000)
+		return
+	} else {
+		log.I("[network] connected to:", conn.RemoteAddr())
+	}
+
+	ctx = new(WSContext)
+	ctx.NewOutgoing(conn, url)
+	m.ctx_mgr.add(ctx)
+
+	// 订阅消息
+	if !sync_mode.IsLight() {
+		go m.subscribe(ctx)
+	}
+
+	// 如果定义了外部连接，扩散之
+	if pub_url, ok := m.Owner().Config().GetString("pub_url"); ok && pub_url != "" {
+		ctx.SendNotify("my_url", pub_url)
+	}
+
+	m.Owner().EventMgr().Emit("connected", ctx)
+
+	go m._message_loop(ctx)
+
+	if onOpen != nil {
+		onOpen(nil, ctx)
+	}
+
+	return ctx, nil
+}
 
 func (this *NetProcessor) HandleIncoming(socket *NetWebSocket) {
 
@@ -100,7 +157,7 @@ func (this *NetProcessor) HandleIncoming(socket *NetWebSocket) {
 
 	log.I("[network] receive new connection:", ip)
 
-	device := this._topology.GetDeviceByAddress(ip)
+	device := this._topology.GetPeerDeviceByAddress(ip)
 
 	if (device == nil) {
 		log.I("client address is not in white list, ignore it.")

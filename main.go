@@ -3,6 +3,8 @@ package main
 import (
 	"../gotest/swarm/network"
 	"fmt"
+	"os"
+	"strconv"
 	"time"
 )
 
@@ -15,7 +17,12 @@ func main() {
 
 func sample_test() {
 
-	topology := network.LoadTopologyFromDB("")
+	topology := network.LoadTopology()
+
+	if (len(os.Args) > 1) {
+		serverPort, _ := strconv.Atoi(os.Args[1])
+		topology.Self().Port = int32(serverPort)
+	}
 
 	eventHandler := SampleEventHandler{}
 
