@@ -1,0 +1,114 @@
+syntax = "proto3";
+
+import "google/protobuf/timestamp.proto";
+
+package dag;
+//////////////////////////////////////////////////
+// joint
+
+enum DagEventType {
+
+    RequestCatchUp = 0;
+    GetVertex = 1;
+    VertexesData = 2;
+
+    GetTopology = 3;
+    GetNode = 4;
+    NodesData = 5;
+
+    Subscribe = 6;
+    RequestInfo = 7;
+    Info = 8;
+
+}
+
+message DagEvent {
+
+    string event_id = 1;
+
+    DagEventType event_type = 2;
+
+    oneof data {
+        RequestCatchUpEvent request_catchup_event = 11;
+        GetVertexEvent get_vertex_event = 12;
+        VertexesDataEvent vertexes_data_event = 13;
+        GetTopologyEvent get_topology_event = 14;
+        GetNodeEvent get_node_event = 15;
+        NodesDataEvent nodes_data_event = 16;
+        SubscribeEvent subscribe_event = 17;
+        RequestInfoEvent request_info_event = 18;
+        InfoEvent info_event = 19;
+    }
+}
+
+message DagVertex {
+
+    string creator_node_id = 1;
+    string signature = 2;       // The hash of the content
+    string hash = 3;
+
+    // Level of the vertex, each node should calculate by their own, not trust the value that passed in
+    int64 level = 7;
+
+    // Queen could decide which node underneath could be accepted or rejected
+    bool is_queen = 8;
+
+    // The candicates can be promoted to queen
+    bool is_candidate = 9;
+
+    DagVertexContent content = 10;
+}
+
+message DagVertexContent {
+
+    google.protobuf.Timestamp time_stamp = 4;
+    string self_parent_hash = 5;
+    string peer_parent_hash = 6;
+
+    repeated bytes data = 7;
+}
+
+message DagNode {
+
+    string node_id = 1;
+
+}
+
+message RequestCatchUpEvent {
+
+}
+
+message GetVertexEvent {
+
+    string vertex_hash = 1;
+}
+
+message VertexesDataEvent {
+
+    repeated DagVertex vertexes = 1;
+}
+
+message GetTopologyEvent {
+
+}
+
+message GetNodeEvent {
+
+    string node_id = 1;
+}
+
+message NodesDataEvent {
+
+}
+
+message SubscribeEvent {
+
+}
+
+message RequestInfoEvent {
+
+}
+
+message InfoEvent {
+
+}

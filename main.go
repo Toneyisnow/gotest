@@ -2,6 +2,7 @@ package main
 
 import (
 	"../gotest/swarm/network"
+	"../gotest/swarm/dag"
 	"github.com/smartswarm/go/log"
 	"os"
 	"strconv"
@@ -10,12 +11,12 @@ import (
 
 func main() {
 
-	sample_test()
+	dag_test()
 
-	time.Sleep(3 * time.Second)
+	time.Sleep(5 * time.Second)
 }
 
-func sample_test() {
+func network_test() {
 
 	topology := network.LoadTopology()
 
@@ -49,16 +50,50 @@ func sample_test() {
 		} else {
 			log.I2("SendEvent succeeeded. Result: eventId=[%d]", result.EventId)
 		}
-
 	}
+}
 
+func dag_test() {
+
+	handler := SamplePayloadHandler{}
+	engine := dag.ComposeDagEngine(&handler)
+
+	engine.Start()
+
+	time.Sleep(5 * time.Second)
+	for i :=  0; i < 15; i++ {
+
+		data := "" + strconv.Itoa(i)
+		engine.SubmitPayload([]byte(data))
+
+		time.Sleep(1 * time.Second)
+	}
 }
 
 type SampleEventHandler struct {
 
 }
 
-func (this SampleEventHandler) HandleEventData(context *network.NetContext, rawData []byte) {
+func (this SampleEventHandler) HandleEventData(context *network.NetContext, rawData []byte) (err error) {
 
 	log.I("HandleEventData Start.")
+
+	return nil
+}
+
+type SamplePayloadHandler struct {
+
+}
+
+func (this *SamplePayloadHandler) OnPayloadSubmitted(data dag.PayloadData) {
+
+	log.I("OnPayloadSubmitted: ", data)
+}
+
+func (this *SamplePayloadHandler) OnPayloadAccepted(data dag.PayloadData) {
+
+}
+
+func (this *SamplePayloadHandler) OnPayloadRejected(data dag.PayloadData) {
+
 }
