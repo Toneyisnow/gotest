@@ -98,3 +98,16 @@ func (this *NetTopology) GetAllRemoteDevices() []*NetDevice {
 func (this *NetTopology) Self() *NetDevice {
 	return this._self
 }
+
+func (this *NetTopology) SetSelf(dev *NetDevice) {
+	this._self = dev
+	}
+
+func (this *NetTopology) AddPeer(dev *NetDevice) {
+
+	if this._peers == nil {
+		this._peers = make([]*NetDevice, 0)
+	}
+
+	this._peers = append(this._peers, dev)
+}

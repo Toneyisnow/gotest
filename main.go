@@ -1,8 +1,9 @@
 package main
 
 import (
-	"../gotest/swarm/network"
 	"../gotest/swarm/dag"
+	"../gotest/swarm/network"
+	"../gotest/swarm/storage"
 	"github.com/smartswarm/go/log"
 	"os"
 	"strconv"
@@ -10,6 +11,8 @@ import (
 )
 
 func main() {
+
+	db_test()
 
 	dag_test()
 
@@ -68,6 +71,22 @@ func dag_test() {
 
 		time.Sleep(1 * time.Second)
 	}
+}
+
+func db_test() {
+
+	storage := storage.ComposeRocksDBInstance("dag_test")
+	storage.Put([]byte("key1"), []byte("111"))
+	storage.Put([]byte("key2"), []byte("222"))
+	storage.PutSeek([]byte("key1"), []byte("111"))
+	storage.PutSeek([]byte("key2"), []byte("222"))
+
+	data, _ := storage.Get([]byte("key1"))
+	log.I("data: ", data)
+
+	storage.Seek([]byte("key"), func(v []byte) {
+		log.I("value", string(v))
+	})
 }
 
 type SampleEventHandler struct {

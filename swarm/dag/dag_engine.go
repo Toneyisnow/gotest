@@ -22,6 +22,7 @@ type DagEngine struct {
 	_payloadDataQueueMutex sync.Mutex
 	_pendingPayloadDataQueue []PayloadData
 
+	_dagNodes *DagNodes
 	_topology *network.NetTopology
 
 	_netProcessor *network.NetProcessor
@@ -46,7 +47,8 @@ func (this *DagEngine) Initialize() {
 
 	this._pendingPayloadDataQueue = make([]PayloadData, 0)
 
-	this._topology = network.LoadTopology()
+	this._dagNodes = LoadDagNodesFromFile("node-topology.json")
+	this._topology = this._dagNodes.GetNetTopology()
 
 	if (len(os.Args) > 1) {
 		serverPort, _ := strconv.Atoi(os.Args[1])
@@ -79,13 +81,15 @@ func (this *DagEngine) SubmitPayload(data PayloadData) {
 	this._pendingPayloadDataQueue = append(this._pendingPayloadDataQueue, data)
 
 	if len(this._pendingPayloadDataQueue) >= DAG_PAYLOAD_BUFFER_SIZE {
-		this.ComposeNewVertex()
+
+		// ComposePayloadVertex(nil)
+		this.ComposeVertexEvent()
 	}
 
 	log.I("[dag] End SubmitPayload.")
 }
 
-func (this *DagEngine) ComposeNewVertex() {
+func (this *DagEngine) ComposeVertexEvent() {
 
 	log.I("[dag] Begin ComposeNewVertex.")
 
@@ -93,15 +97,31 @@ func (this *DagEngine) ComposeNewVertex() {
 	defer this._payloadDataQueueMutex.Unlock()
 
 	// Compose the Vertex Data
+	vertex, _ := GenerateNewVertex(nil)
+
+	if (vertex == nil) {
+		log.W("Something wrong while generating new vertex, stopping composing.")
+		return
+	}
 
 	event := new(DagEvent)
 	event.EventId = "11"
-	event.EventType = DagEventType_Info
-	data, _ := proto.Marshal(event)
+	event.EventType = DagEventType_VertexesData
 
-	for _, device := range this._topology.GetAllRemoteDevices() {
 
-		resultChan := this._netProcessor.SendEventToDeviceAsync(device, data)
+	vertexesEvent := new(VertexesDataEvent)
+	vertexesEvent.Vertexes = append(vertexesEvent.Vertexes, vertex)
+	event.Data = &DagEvent_VertexesDataEvent{VertexesDataEvent: vertexesEvent}
+
+	// Send the Vertex to some nodes
+	for _, node := range this._dagNodes.Peers {
+
+		vertexList, _ := FindPossibleUnknownVertexesForNode(node)
+
+		event, _ := ComposeVertexEvent(101, vertexList)
+		data, _ := proto.Marshal(event)
+
+		resultChan := this._netProcessor.SendEventToDeviceAsync(node.Device, data)
 		result := <-resultChan
 
 		if (result.Err != nil) {

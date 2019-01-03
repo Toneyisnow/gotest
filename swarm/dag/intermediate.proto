@@ -1,0 +1,27 @@
+syntax = "proto3";
+
+package dag;
+
+message DagVertexStatus {
+
+    int64 level = 7;
+
+    // Queen could decide which node underneath could be accepted or rejected
+    bool is_queen = 8;
+
+    // The candicates can be promoted to queen
+    bool is_candidate = 9;
+
+    int32 status = 10;
+}
+
+message DagVertexDag {
+
+    string self_parent_hash = 1;
+    string peer_parent_hash = 2;
+}
+
+message DagVertexRelationship {
+
+    repeated int64 node_id_list = 1;
+}

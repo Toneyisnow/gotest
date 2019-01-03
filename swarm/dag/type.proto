@@ -43,7 +43,7 @@ message DagEvent {
 
 message DagVertex {
 
-    string creator_node_id = 1;
+    int64 creator_node_id = 1;
     string signature = 2;       // The hash of the content
     string hash = 3;
 
@@ -66,12 +66,6 @@ message DagVertexContent {
     string peer_parent_hash = 6;
 
     repeated bytes data = 7;
-}
-
-message DagNode {
-
-    string node_id = 1;
-
 }
 
 message RequestCatchUpEvent {
