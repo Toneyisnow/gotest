@@ -25,6 +25,8 @@ type DagEngine struct {
 	_dagNodes *DagNodes
 	_topology *network.NetTopology
 
+	_dagStorage *DagStorage
+
 	_netProcessor *network.NetProcessor
 }
 
@@ -55,6 +57,8 @@ func (this *DagEngine) Initialize() {
 		this._topology.Self().Port = int32(serverPort)
 	}
 
+	this._dagStorage = ComposeDagStorageInstance()
+
 	eventHandler := ComposeDagEventHandler(this)
 	this._netProcessor = network.CreateProcessor(this._topology, eventHandler)
 
@@ -63,6 +67,9 @@ func (this *DagEngine) Initialize() {
 func (this *DagEngine) Start() {
 
 	log.I("[dag] Begin DagEngine.Start()")
+
+	// Load the previous cache data from Database: PendingPayloadData
+
 
 	this._netProcessor.Start()
 
@@ -78,7 +85,9 @@ func (this *DagEngine) Stop() {
 func (this *DagEngine) SubmitPayload(data PayloadData) {
 
 	log.I("[dag] Begin SubmitPayload.")
+
 	this._pendingPayloadDataQueue = append(this._pendingPayloadDataQueue, data)
+	this._dagStorage.PutPendingPayloadData(data)
 
 	if len(this._pendingPayloadDataQueue) >= DAG_PAYLOAD_BUFFER_SIZE {
 
@@ -103,15 +112,6 @@ func (this *DagEngine) ComposeVertexEvent() {
 		log.W("Something wrong while generating new vertex, stopping composing.")
 		return
 	}
-
-	event := new(DagEvent)
-	event.EventId = "11"
-	event.EventType = DagEventType_VertexesData
-
-
-	vertexesEvent := new(VertexesDataEvent)
-	vertexesEvent.Vertexes = append(vertexesEvent.Vertexes, vertex)
-	event.Data = &DagEvent_VertexesDataEvent{VertexesDataEvent: vertexesEvent}
 
 	// Send the Vertex to some nodes
 	for _, node := range this._dagNodes.Peers {

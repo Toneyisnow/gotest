@@ -70,3 +70,12 @@ func (this *DagNodes) GetNetTopology() *network.NetTopology {
 
 	return topology
 }
+
+func (this *DagNodes) FindCandidateNodesToSendVertex(maxCount int) []*DagNode {
+
+	result := make([]*DagNode, 0)
+
+
+
+	return result
+}
