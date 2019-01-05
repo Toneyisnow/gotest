@@ -44,27 +44,28 @@ message DagEvent {
 message DagVertex {
 
     int64 creator_node_id = 1;
-    string signature = 2;       // The hash of the content
-    string hash = 3;
+    string signature = 2;       // The signature (encryption of the hash)
+    string hash = 3;            // The hash of the content
 
-    // Level of the vertex, each node should calculate by their own, not trust the value that passed in
-    int64 level = 7;
-
-    // Queen could decide which node underneath could be accepted or rejected
-    bool is_queen = 8;
-
-    // The candicates can be promoted to queen
-    bool is_candidate = 9;
-
-    DagVertexContent content = 10;
+    bytes content = 4; // the DagVertexContent data serialized
 }
 
 message DagVertexContent {
 
-    google.protobuf.Timestamp time_stamp = 4;
-    string self_parent_hash = 5;
-    string peer_parent_hash = 6;
+    google.protobuf.Timestamp time_stamp = 1;
+    string self_parent_hash = 2;
+    string peer_parent_hash = 3;
 
+    // Level of the vertex, each node should calculate by their own, not trust the value that passed in
+    int64 level = 4;
+
+    // Queen could decide which node underneath could be accepted or rejected
+    bool is_queen = 5;
+
+    // The candicates can be promoted to queen
+    bool is_candidate = 6;
+
+    // The data it carries
     repeated bytes data = 7;
 }
 

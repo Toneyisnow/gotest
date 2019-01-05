@@ -1,13 +1,14 @@
 package storage
 
 import (
-	"errors"
-	"github.com/smartswarm/core/node_typo"
-	"github.com/smartswarm/go/app"
 	"../common/log"
+	"bytes"
+	"encoding/binary"
+	"errors"
+	"github.com/smartswarm/go/app"
 
-	"github.com/golang/protobuf/proto"
 	"github.com/czsilence/gorocksdb"
+	"github.com/golang/protobuf/proto"
 	//// "github.com/syndtr/goleveldb/leveldb/opt"
 )
 
@@ -97,6 +98,10 @@ func newRocksTransactionStorage(databaseFullPath string) (*RocksStorage, error) 
 	}
 
 	seekable, err := gorocksdb.OpenDb(opts, databaseFullPath)
+
+	rOptions := gorocksdb.NewDefaultReadOptions()
+	rOptions.SetIterateUpperBound(ConvertUintToBytes(^uint32(0)))
+
 	storage := &RocksStorage{
 		db:     db,
 		seekableDb: seekable,
@@ -111,14 +116,30 @@ func newRocksTransactionStorage(databaseFullPath string) (*RocksStorage, error) 
 
 	return storage, nil
 }
-func (storage *RocksStorage) Seek(prefix []byte, f func(value []byte)) error {
+func (storage *RocksStorage) SeekAll(prefix []byte, f func(value []byte)) error {
 
 	iter := storage.seekableDb.NewIterator(storage.ro)
 	defer iter.Close()
+
 	for iter.Seek(prefix); iter.Valid(); iter.Next() {
 		f(iter.Value().Data())
 	}
 	return nil
+}
+
+func (storage *RocksStorage) SeekNext(prefix []byte) (key []byte, value []byte, err error) {
+
+	iter := storage.seekableDb.NewIterator(storage.ro)
+	defer iter.Close()
+
+	for iter.Seek(prefix); iter.Valid(); iter.Next() {
+
+		if bytes.Equal(key[:len(prefix)], prefix) {
+			return iter.Key().Data(), iter.Value().Data(), nil
+		}
+	}
+
+	return nil, nil, nil
 }
 
 // Get return value to the key in Storage
@@ -149,6 +170,7 @@ func (storage *RocksStorage) Put(key []byte, value []byte) error {
 func (storage *RocksStorage) PutSeek(key []byte, value []byte) error {
 
 	return storage.seekableDb.Put(storage.wo, key, value)
+
 }
 
 // check if entry exists
@@ -175,19 +197,20 @@ func (storage *RocksStorage) Close() error {
 }
 
 
+
 // 保存proto序列化数据
-func (storage *RocksStorage) SaveProto(s node_typo.Storage, key string, pb proto.Message) error {
+func (storage *RocksStorage) SaveProto(key string, pb proto.Message) error {
 	if data, err := proto.Marshal(pb); err != nil {
 		return err
 	} else {
-		s.Put([]byte(key), data)
+		storage.Put([]byte(key), data)
 		return nil
 	}
 }
 
 // 读取并解析proto序列化数据
-func (storage *RocksStorage) LoadProto(s node_typo.Storage, key string, pb proto.Message) error {
-	if data, err := s.Get([]byte(key)); err != nil {
+func (storage *RocksStorage) LoadProto(key string, pb proto.Message) error {
+	if data, err := storage.Get([]byte(key)); err != nil {
 		return err
 	} else if data == nil {
 		// no data found
@@ -198,7 +221,18 @@ func (storage *RocksStorage) LoadProto(s node_typo.Storage, key string, pb proto
 	return nil
 }
 
+// This should be moved to common utils method
+func ConvertUintToBytes(value uint32) []byte {
 
+	bs := make([]byte, 4)
+	binary.BigEndian.PutUint32(bs, value)
+
+	return bs
+}
+
+func ConvertBytesToUint32(value []byte) uint32 {
+	return binary.BigEndian.Uint32(value)
+}
 
 // // EnableBatch enable batch write.
 // func (storage *RocksStorage) EnableBatch() {

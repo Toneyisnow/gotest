@@ -12,6 +12,8 @@ type DagNode struct {
 
 	NodeId int64
 	Device *network.NetDevice
+
+	GenesisVertexHash string
 }
 
 type DagNodes struct {

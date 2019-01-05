@@ -57,7 +57,7 @@ func (this *DagEngine) Initialize() {
 		this._topology.Self().Port = int32(serverPort)
 	}
 
-	this._dagStorage = ComposeDagStorageInstance()
+	this._dagStorage = DagStorageGetInstance()
 
 	eventHandler := ComposeDagEventHandler(this)
 	this._netProcessor = network.CreateProcessor(this._topology, eventHandler)
@@ -86,8 +86,12 @@ func (this *DagEngine) SubmitPayload(data PayloadData) {
 
 	log.I("[dag] Begin SubmitPayload.")
 
+	this._payloadDataQueueMutex.Lock()
+
 	this._pendingPayloadDataQueue = append(this._pendingPayloadDataQueue, data)
 	this._dagStorage.PutPendingPayloadData(data)
+
+	this._payloadDataQueueMutex.Unlock()
 
 	if len(this._pendingPayloadDataQueue) >= DAG_PAYLOAD_BUFFER_SIZE {
 
@@ -102,11 +106,8 @@ func (this *DagEngine) ComposeVertexEvent() {
 
 	log.I("[dag] Begin ComposeNewVertex.")
 
-	this._payloadDataQueueMutex.Lock()
-	defer this._payloadDataQueueMutex.Unlock()
-
 	// Compose the Vertex Data
-	vertex, _ := GenerateNewVertex(nil)
+	vertex, _ := GenerateNewVertex(this._dagNodes.GetSelf(), nil)
 
 	if (vertex == nil) {
 		log.W("Something wrong while generating new vertex, stopping composing.")

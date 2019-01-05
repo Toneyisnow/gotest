@@ -4,6 +4,7 @@ import (
 	"../gotest/swarm/dag"
 	"../gotest/swarm/network"
 	"../gotest/swarm/storage"
+	"encoding/binary"
 	"github.com/smartswarm/go/log"
 	"os"
 	"strconv"
@@ -63,7 +64,7 @@ func dag_test() {
 
 	engine.Start()
 
-	time.Sleep(5 * time.Second)
+	time.Sleep(3 * time.Second)
 	for i :=  0; i < 15; i++ {
 
 		data := "" + strconv.Itoa(i)
@@ -75,18 +76,33 @@ func dag_test() {
 
 func db_test() {
 
-	storage := storage.ComposeRocksDBInstance("dag_test")
-	storage.Put([]byte("key1"), []byte("111"))
-	storage.Put([]byte("key2"), []byte("222"))
-	storage.PutSeek([]byte("key1"), []byte("111"))
-	storage.PutSeek([]byte("key2"), []byte("222"))
+	rstorage := storage.ComposeRocksDBInstance("dag_test")
 
-	data, _ := storage.Get([]byte("key1"))
+	bs := make([]byte, 4)
+	binary.BigEndian.PutUint32(bs, 111)
+
+	rstorage.Put(append([]byte("key1"), bs...), []byte("111"))
+	rstorage.Put([]byte("key2"), []byte("222"))
+	rstorage.PutSeek([]byte("key"), []byte("111"))
+	rstorage.PutSeek([]byte("key2"), []byte("222"))
+	rstorage.PutSeek([]byte("key3"), []byte("333"))
+	rstorage.PutSeek([]byte("kwy4"), []byte("444"))
+	rstorage.PutSeek([]byte("key5"), []byte("555"))
+	rstorage.PutSeek([]byte("key11"), []byte("11555"))
+
+	data, _ := rstorage.Get([]byte("key1"))
 	log.I("data: ", data)
 
-	storage.Seek([]byte("key"), func(v []byte) {
+	rstorage.SeekAll([]byte("key2"), func(v []byte) {
 		log.I("value", string(v))
 	})
+
+	levelQueue := storage.ComposeRocksLevelQueue(rstorage, "incomingVertexQueue")
+	levelQueue.Push(1, []byte("83291"))
+
+	result := levelQueue.Pop()
+	log.I("LevelQueue: Pop result: ", result)
+
 }
 
 type SampleEventHandler struct {
