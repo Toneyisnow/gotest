@@ -1,0 +1,28 @@
+{
+  "Self": {
+    "NodeId": 0,
+    "Device": {
+      "id": "",
+      "ip_address": "127.0.0.1",
+      "port": 0,
+      "public_key": "BC1Bfa3b+js4F6aBPf0/mT4hdTMYobPJuCzA/FYLtY/GuSOh03Igtl2W1AonycAhRlR8AJVYicAuH20UIJcjcVk=",
+      "private_key": "Ea2L8nVLXjLqSuLC3EDzjlNxuy61f97Bsvy2BSlP5BA=",
+      "temp_public_key": null
+    },
+    "GenesisVertexHash": null
+  },
+  "Peers": [
+    {
+      "NodeId": 0,
+      "Device": {
+        "id": "",
+        "ip_address": "127.0.0.1",
+        "port": 0,
+        "public_key": "BN2SyNMkTfZ1lC+vJi9DCrEaJGgK+1SMRiCQnSFsA7DKNnnbTQRoGReuV2knCbwlM1Y9O55DENi6LJ3wlhi606c=",
+        "private_key": null,
+        "temp_public_key": null
+      },
+      "GenesisVertexHash": null
+    }
+  ]
+}
