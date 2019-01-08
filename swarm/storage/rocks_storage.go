@@ -12,6 +12,9 @@ import (
 	//// "github.com/syndtr/goleveldb/leveldb/opt"
 )
 
+// The interface for data callback function, will deal with bytes and return true if everything is fine
+type dataCallbackFunc func([]byte) bool
+
 type batchOpt struct {
 	key     []byte
 	value   []byte
@@ -134,8 +137,9 @@ func (storage *RocksStorage) SeekNext(prefix []byte) (key []byte, value []byte, 
 
 	for iter.Seek(prefix); iter.Valid(); iter.Next() {
 
-		if bytes.Equal(key[:len(prefix)], prefix) {
-			return iter.Key().Data(), iter.Value().Data(), nil
+		key = iter.Key().Data()
+		if key != nil && len(key) >= len(prefix) && bytes.Equal(key[:len(prefix)], prefix) {
+			return key, iter.Value().Data(), nil
 		}
 	}
 

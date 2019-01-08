@@ -9,11 +9,10 @@ type NetDevice struct {
 	Id string 			 `json:"id"`
 	IPAddress string     `json:"ip_address"`
 	Port int32           `json:"port"`
-	Signature string     `json:"signature"`
 
-	PublicKey string     `json:"public_key"`
-	PrivateKey string
-	TempPublicKey string `json:"temp_public_key"`
+	PublicKey []byte     `json:"public_key"`
+	PrivateKey []byte	 `json:"private_key"`       // For a given config, only the Self node contains the Private key
+	TempPublicKey []byte `json:"temp_public_key"`
 
 }
 

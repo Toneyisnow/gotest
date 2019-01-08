@@ -18,14 +18,14 @@ type RocksLevelQueue struct {
 
 	RocksContainer
 
-	LastKey []byte
-	NowIndex uint32
+	lastKey []byte
+	nowIndex uint32
 
 	itemCount uint32
 	queueMutex sync.Mutex
 }
 
-func ComposeRocksLevelQueue(storage *RocksStorage, queueId string) *RocksLevelQueue {
+func NewRocksLevelQueue(storage *RocksStorage, queueId string) *RocksLevelQueue {
 
 	queue := new(RocksLevelQueue)
 
@@ -33,8 +33,8 @@ func ComposeRocksLevelQueue(storage *RocksStorage, queueId string) *RocksLevelQu
 	queue.containerId = queueId
 	queue.containerType = RocksContainerType_LevelQueue
 
-	queue.NowIndex = queue.GetMetadataValueUint32("n")
-	queue.LastKey = queue.GetMetadataValueBytes("l")
+	queue.nowIndex = queue.GetMetadataValueUint32("n")
+	queue.lastKey = queue.GetMetadataValueBytes("l")
 	queue.itemCount = queue.GetMetadataValueUint32("c")
 
 	return queue
@@ -51,13 +51,13 @@ func (this *RocksLevelQueue) Push(level uint32, value []byte) (err error) {
 		return errors.New("Push to queue failed: the queue is full.")
 	}
 
-	curIndex := this.NowIndex
-	if this.NowIndex < RocksQueueMaxIndex {
-		this.NowIndex ++
+	curIndex := this.nowIndex
+	if this.nowIndex < RocksQueueMaxIndex {
+		this.nowIndex = this.nowIndex + 1
 	} else {
-		this.NowIndex = 0
+		this.nowIndex = 0
 	}
-	this.SetMetadataValueUint32("n", this.NowIndex)
+	this.SetMetadataValueUint32("n", this.nowIndex)
 
 	levelByte := ConvertUintToBytes(level)
 	bs := ConvertUintToBytes(curIndex)
@@ -65,52 +65,62 @@ func (this *RocksLevelQueue) Push(level uint32, value []byte) (err error) {
 
 	this.storage.PutSeek(this.GenerateKey(key), value)
 
-	this.itemCount ++
+	this.itemCount = this.itemCount + 1
 	this.SetMetadataValueUint32("c", this.itemCount)
 
 	return nil
 }
 
-func (this *RocksLevelQueue) Pop() []byte {
+// Pop the value, and try to handle it with callback, if callback return false, then don't delete it from database
+func (this *RocksLevelQueue) Pop(callback dataCallbackFunc) {
 
 	this.queueMutex.Lock()
 	defer this.queueMutex.Unlock()
 
 	if this.itemCount <= 0 {
 		// Queue is empty
-		return nil
+		return
 	}
 
 	queueKey := this.GetContainerKey()
 	lastKey := queueKey
-	if (this.LastKey != nil) {
-		lastKey = append(lastKey, this.LastKey...)
+	if this.lastKey != nil {
+		lastKey = append(lastKey, this.lastKey...)
 	}
 
 	key, value, err := this.storage.SeekNext(lastKey)
 	if err != nil {
-		return nil
+		return
 	}
 
 	// If there is no begin key, should seek from the start
 	if value == nil {
 		key, value, err = this.storage.SeekNext(queueKey)
 		if err != nil {
-			return nil
+			return
 		}
 	}
 
 	if key == nil || value == nil {
-		return nil
+		return
+	}
+
+	if !callback(value) {
+		return
 	}
 
 	// Delete the current value and move lastKey
 	this.storage.DelSeek(key)
 
-	this.LastKey = key
-	this.SetMetadataValueBytes("l", this.LastKey)
-	this.itemCount --
+	this.lastKey = key
+	this.SetMetadataValueBytes("l", this.lastKey)
+	this.itemCount = this.itemCount - 1
 	this.SetMetadataValueUint32("c", this.itemCount)
 
-	return value
+	return
+}
+
+func (this *RocksLevelQueue) DataSize() uint32 {
+
+	return this.itemCount
 }

@@ -4,86 +4,111 @@ import (
 	"../storage"
 	"errors"
 	"github.com/smartswarm/go/log"
-	"math/rand"
 	"strconv"
 	"sync"
 )
 
 type DagStorage struct {
 
-	_storage *storage.RocksStorage
+	storage *storage.RocksStorage
+
+	// All tables defined
+	tableVertex *storage.RocksTable
+	tableVertexDag *storage.RocksTable
+	tableVertexStatus *storage.RocksTable
+	tableCandidate *storage.RocksTable
+	tableNodeLatestVertex *storage.RocksTable
+	tableCandidateVote *storage.RocksTable
+
+	queuePendingData *storage.RocksSequenceQueue
+
+	// Queue: Incoming Vertex
+	queueIncomingVertex *storage.RocksSequenceQueue
+	queueVertexDag *storage.RocksSequenceQueue
+	queueCandidate *storage.RocksSequenceQueue
+
+	levelqueueUndecidedCandidate *storage.RocksLevelQueue
+	queueUnconfirmedVertex *storage.RocksSequenceQueue
+	
 }
 
-var _dagStorage *DagStorage
-var _dagStorageMutex sync.Mutex
+var dagStorage *DagStorage
+var dagStorageMutex sync.Mutex
 
 func DagStorageGetInstance() *DagStorage{
 
-	_dagStorageMutex.Lock()
-	if (_dagStorage == nil) {
-		_dagStorage = ComposeDagStorageInstance()
+	dagStorageMutex.Lock()
+	if (dagStorage == nil) {
+		dagStorage = NewDagStorage()
 	}
-	_dagStorageMutex.Unlock()
+	dagStorageMutex.Unlock()
 
-	return _dagStorage
+	return dagStorage
 }
 
-func ComposeDagStorageInstance() *DagStorage {
+func NewDagStorage() *DagStorage {
 
 	dagStorage := new(DagStorage)
 
-	dagStorage._storage = storage.ComposeRocksDBInstance("swarmdag")
+	dagStorage.storage = storage.ComposeRocksDBInstance("swarmdag")
+
+	dagStorage.queuePendingData = storage.NewRocksSequenceQueue(dagStorage.storage, "P")
+	dagStorage.queueIncomingVertex = storage.NewRocksSequenceQueue(dagStorage.storage, "I")
 
 	return dagStorage
 }
 
 func (this *DagStorage) PutPendingPayloadData(data PayloadData) {
 
-	key := "P:" + strconv.Itoa(rand.Int())
-	this._storage.PutSeek([]byte(key), data)
+	this.queuePendingData.Push(data)
 }
 
 func (this *DagStorage) GetPendingPayloadData() []PayloadData {
 
+	this.queuePendingData.Pop(
+		func(val []byte) bool {
+			return true
+		})
+
 	result := make([]PayloadData, 0)
 
-	this._storage.Seek([]byte("P:"), func(v []byte) {
+	this.storage.SeekAll([]byte("P:"), func(v []byte) {
 		result = append(result, v)
 	})
 
 	return result
 }
 
-func (this *DagStorage) GetLastVertexOnNode(node *DagNode, hashOnly bool) (hash string, vertex *DagVertex, err error) {
+func (this *DagStorage) GetLastVertexOnNode(node *DagNode, hashOnly bool) (hash []byte, vertex *DagVertex, err error) {
 
 	if (node == nil) {
 		log.W("GetLastVertexOnNode failed: node is nil.")
-		return "", nil, errors.New("GetLastVertexOnNode failed: node is nil.")
+		return nil, nil, errors.New("GetLastVertexOnNode failed: node is nil.")
 	}
 
-	vertexHash, err := this._storage.Get([]byte("L:" + strconv.FormatInt(node.NodeId, 16)))
+	vertexHash, err := this.storage.Get([]byte("L:" + strconv.FormatInt(node.NodeId, 16)))
 
 	if err != nil {
 		log.W("Got error while GetLastVertexOnNode: " + err.Error())
-		return "", nil, err
+		return nil, nil, err
 	}
 
 	if vertexHash == nil {
 		log.W("Cannot find vertex hash in GetLastVertexOnNode.")
-		return "", nil, errors.New("Cannot find vertex hash in GetLastVertexOnNode.")
+		return nil, nil, errors.New("Cannot find vertex hash in GetLastVertexOnNode.")
 	}
 
 	if hashOnly {
-		return string(vertexHash), nil, nil
+		return vertexHash, nil, nil
 	}
 
 	vertex = new(DagVertex)
-	this._storage.LoadProto("V:" + string(vertexHash), vertex)
+	this.storage.LoadProto("V:" + string(vertexHash), vertex)
 	if vertex == nil {
 		log.W("Cannot find vertex in GetLastVertexOnNode.")
-		return "", nil, errors.New("Cannot find vertex in GetLastVertexOnNode.")
+		return nil, nil, errors.New("Cannot find vertex in GetLastVertexOnNode.")
 	}
 
-	return string(vertexHash), vertex, nil
+	return vertexHash, vertex, nil
 }
 

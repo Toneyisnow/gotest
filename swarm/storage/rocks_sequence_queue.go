@@ -6,53 +6,54 @@ import (
 )
 
 const (
-	RocksQueueMaxIndex = ^uint32(0) - 1
+	RocksQueueMaxIndex = ^uint32(0)
 )
 
-type RocksQueue struct {
+type RocksSequenceQueue struct {
 
 	RocksContainer
 
-	QueueId string
-	BeginIndex uint32
-	EndIndex uint32
+	queueId    string
+	beginIndex uint32
+	endIndex   uint32
+	//// itemCount  uint32
 
 	queueMutex sync.Mutex
 }
 
-func ComposeRocksQueue(st *RocksStorage, queueId string) *RocksQueue {
+func NewRocksSequenceQueue(st *RocksStorage, queueId string) *RocksSequenceQueue {
 
-	queue := new(RocksQueue)
+	queue := new(RocksSequenceQueue)
 
 	queue.storage = st
 	queue.containerId = queueId
 	queue.containerType = RocksContainerType_SequenceQueue
 
-	queue.BeginIndex = queue.GetMetadataValueUint32("b")
-	queue.EndIndex = queue.GetMetadataValueUint32("e")
+	queue.beginIndex = queue.GetMetadataValueUint32("b")
+	queue.endIndex = queue.GetMetadataValueUint32("e")
 
 	return queue
 }
 
-func (this *RocksQueue) Push(value []byte) (err error) {
+func (this *RocksSequenceQueue) Push(value []byte) (err error) {
 
 	this.queueMutex.Lock()
 	defer this.queueMutex.Unlock()
 
-	curIndex := this.EndIndex
-	if this.EndIndex < RocksQueueMaxIndex {
+	curIndex := this.endIndex
+	if this.endIndex < RocksQueueMaxIndex {
 
-		if this.BeginIndex == 0 || this.EndIndex != this.BeginIndex - 1 {
-			this.EndIndex ++
+		if this.beginIndex == 0 || this.endIndex != this.beginIndex- 1 {
+			this.endIndex ++
 		} else {
 			// The queue is full since the End has caught up with Begin
 			return errors.New("Push to queue failed: the queue is full.")
 		}
 
 	} else {
-		this.EndIndex = 0
+		this.endIndex = 0
 	}
-	this.SetMetadataValueUint32("e", this.EndIndex)
+	this.SetMetadataValueUint32("e", this.endIndex)
 
 	bs := ConvertUintToBytes(curIndex)
 	this.storage.PutSeek(this.GenerateKey(bs), value)
@@ -60,32 +61,47 @@ func (this *RocksQueue) Push(value []byte) (err error) {
 	return nil
 }
 
-func (this *RocksQueue) Pop() []byte {
+// Pop the value, and try to handle it with callback, if callback return false, then don't delete it from database
+func (this *RocksSequenceQueue) Pop(callback dataCallbackFunc) {
 
 	this.queueMutex.Lock()
 	defer this.queueMutex.Unlock()
 
-	if this.BeginIndex == this.EndIndex {
+	if this.beginIndex == this.endIndex {
 		// Queue is empty
-		return nil
+		return
 	}
 
-	bs := ConvertUintToBytes(this.BeginIndex)
+	bs := ConvertUintToBytes(this.beginIndex)
 	key, value, err := this.storage.SeekNext(this.GenerateKey(bs))
 
 	if err != nil {
-		return nil
+		return
 	}
 
-	// Delete the current value and move BeginIndex
+	// Call function
+	if !callback(value) {
+		return
+	}
+
+	// Delete the current value and move beginIndex
 	this.storage.DelSeek(key)
 
-	if this.BeginIndex < RocksQueueMaxIndex {
-		this.BeginIndex ++
+	if this.beginIndex < RocksQueueMaxIndex {
+		this.beginIndex ++
 	} else {
-		this.BeginIndex = 0
+		this.beginIndex = 0
 	}
-	this.SetMetadataValueUint32("b", this.BeginIndex)
+	this.SetMetadataValueUint32("b", this.beginIndex)
 
-	return value
+	return
+}
+
+func (this *RocksSequenceQueue) DataSize() uint32 {
+
+	if this.beginIndex > this.endIndex {
+		return this.beginIndex - this.endIndex
+	} else {
+		return RocksQueueMaxIndex - (this.endIndex - this.beginIndex)
+	}
 }

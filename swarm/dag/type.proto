@@ -44,17 +44,18 @@ message DagEvent {
 message DagVertex {
 
     int64 creator_node_id = 1;
-    string signature = 2;       // The signature (encryption of the hash)
-    string hash = 3;            // The hash of the content
 
-    bytes content = 4; // the DagVertexContent data serialized
+    bytes signature = 2;          // The signature (encryption of the hash)
+    bytes hash = 3;               // The hash of the content, should be 32 Bytes (SHA256)
+
+    DagVertexContent content = 4; // the DagVertexContent data serialized
 }
 
 message DagVertexContent {
 
     google.protobuf.Timestamp time_stamp = 1;
-    string self_parent_hash = 2;
-    string peer_parent_hash = 3;
+    bytes self_parent_hash = 2;
+    bytes peer_parent_hash = 3;
 
     // Level of the vertex, each node should calculate by their own, not trust the value that passed in
     int64 level = 4;
@@ -62,7 +63,7 @@ message DagVertexContent {
     // Queen could decide which node underneath could be accepted or rejected
     bool is_queen = 5;
 
-    // The candicates can be promoted to queen
+    // The candidates can be promoted to queen
     bool is_candidate = 6;
 
     // The data it carries

@@ -6,7 +6,6 @@ import (
 	"github.com/smartswarm/go/log"
 	"os"
 	"strconv"
-	"sync"
 )
 
 type PayloadData []byte
@@ -17,17 +16,17 @@ const (
 
 type DagEngine struct {
 
-	_payloadHandler PayloadHandler
+	payloadHandler PayloadHandler
 
-	_payloadDataQueueMutex sync.Mutex
-	_pendingPayloadDataQueue []PayloadData
+	// payloadDataQueueMutex    sync.Mutex
+	// pendingPayloadDataQueues []PayloadData
 
-	_dagNodes *DagNodes
-	_topology *network.NetTopology
+	dagNodes    *DagNodes
+	netTopology *network.NetTopology
 
-	_dagStorage *DagStorage
+	dagStorage *DagStorage
 
-	_netProcessor *network.NetProcessor
+	netProcessor *network.NetProcessor
 }
 
 func ComposeDagEngine(handler PayloadHandler) *DagEngine {
@@ -39,28 +38,27 @@ func ComposeDagEngine(handler PayloadHandler) *DagEngine {
 	return engine
 }
 
-
 func (this *DagEngine) BindHandler(handler PayloadHandler) {
 
-	this._payloadHandler = handler
+	this.payloadHandler = handler
 }
 
 func (this *DagEngine) Initialize() {
 
-	this._pendingPayloadDataQueue = make([]PayloadData, 0)
+	// this.pendingPayloadDataQueues = make([]PayloadData, 0)
 
-	this._dagNodes = LoadDagNodesFromFile("node-topology.json")
-	this._topology = this._dagNodes.GetNetTopology()
+	this.dagNodes = LoadDagNodesFromFile("node-topology.json")
+	this.netTopology = this.dagNodes.GetNetTopology()
 
 	if (len(os.Args) > 1) {
 		serverPort, _ := strconv.Atoi(os.Args[1])
-		this._topology.Self().Port = int32(serverPort)
+		this.netTopology.Self().Port = int32(serverPort)
 	}
 
-	this._dagStorage = DagStorageGetInstance()
+	this.dagStorage = DagStorageGetInstance()
 
 	eventHandler := ComposeDagEventHandler(this)
-	this._netProcessor = network.CreateProcessor(this._topology, eventHandler)
+	this.netProcessor = network.CreateProcessor(this.netTopology, eventHandler)
 
 }
 
@@ -70,11 +68,8 @@ func (this *DagEngine) Start() {
 
 	// Load the previous cache data from Database: PendingPayloadData
 
-
-	this._netProcessor.Start()
-
+	this.netProcessor.Start()
 	log.I("[dag] End DagEngine.Start()")
-
 }
 
 func (this *DagEngine) Stop() {
@@ -86,14 +81,9 @@ func (this *DagEngine) SubmitPayload(data PayloadData) {
 
 	log.I("[dag] Begin SubmitPayload.")
 
-	this._payloadDataQueueMutex.Lock()
+	this.dagStorage.queuePendingData.Push(data)
 
-	this._pendingPayloadDataQueue = append(this._pendingPayloadDataQueue, data)
-	this._dagStorage.PutPendingPayloadData(data)
-
-	this._payloadDataQueueMutex.Unlock()
-
-	if len(this._pendingPayloadDataQueue) >= DAG_PAYLOAD_BUFFER_SIZE {
+	if this.dagStorage.queuePendingData.DataSize() >= DAG_PAYLOAD_BUFFER_SIZE {
 
 		// ComposePayloadVertex(nil)
 		this.ComposeVertexEvent()
@@ -104,25 +94,33 @@ func (this *DagEngine) SubmitPayload(data PayloadData) {
 
 func (this *DagEngine) ComposeVertexEvent() {
 
-	log.I("[dag] Begin ComposeNewVertex.")
+	log.I("[dag] Begin ComposeVertexEvent.")
 
 	// Compose the Vertex Data
-	vertex, _ := GenerateNewVertex(this._dagNodes.GetSelf(), nil)
+	vertex, _ := CreateVertex(this.dagNodes.GetSelf(), nil)
 
 	if (vertex == nil) {
 		log.W("Something wrong while generating new vertex, stopping composing.")
 		return
 	}
 
-	// Send the Vertex to some nodes
-	for _, node := range this._dagNodes.Peers {
+	// Handle the event
+	if this.payloadHandler != nil {
+		for _, payloadData := range vertex.GetContent().Data {
+			this.payloadHandler.OnPayloadSubmitted(payloadData)
+		}
+	}
 
-		vertexList, _ := FindPossibleUnknownVertexesForNode(node)
+	// Send the Vertex to 0-1 nodes
+	peerNode := SelectPeerNodeToSendVertex(this.dagStorage, this.dagNodes)
+	if peerNode != nil {
 
+		// Compose Vertex event and send
+		vertexList, _ := FindPossibleUnknownVertexesForNode(this.dagStorage, peerNode)
 		event, _ := ComposeVertexEvent(101, vertexList)
 		data, _ := proto.Marshal(event)
 
-		resultChan := this._netProcessor.SendEventToDeviceAsync(node.Device, data)
+		resultChan := this.netProcessor.SendEventToDeviceAsync(peerNode.Device, data)
 		result := <-resultChan
 
 		if (result.Err != nil) {
@@ -132,16 +130,5 @@ func (this *DagEngine) ComposeVertexEvent() {
 		}
 	}
 
-	// Handle the event
-	if this._payloadHandler != nil {
-
-		for _, payloadData := range this._pendingPayloadDataQueue {
-			this._payloadHandler.OnPayloadSubmitted(payloadData)
-		}
-	}
-
-	// Clear the queue
-	this._pendingPayloadDataQueue = make([]PayloadData, 0)
-
-	log.I("[dag] End ComposeNewVertex.")
+	log.I("[dag] End ComposeVertexEvent.")
 }

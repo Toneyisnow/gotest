@@ -4,6 +4,12 @@ import (
 	"../gotest/swarm/dag"
 	"../gotest/swarm/network"
 	"../gotest/swarm/storage"
+	"crypto/sha256"
+	"encoding/hex"
+	"fmt"
+	"github.com/smartswarm/core/crypto/secp256k1"
+	//"../gotest/swarm/storagetest"
+
 	"encoding/binary"
 	"github.com/smartswarm/go/log"
 	"os"
@@ -13,11 +19,37 @@ import (
 
 func main() {
 
-	db_test()
+	crpto_test()
+
+	// db_test()
 
 	dag_test()
 
 	time.Sleep(5 * time.Second)
+}
+
+func crpto_test() {
+
+	// sha := sha256.New()
+	hash := sha256.Sum256([]byte("Hello world"))
+	// hashString := base64.URLEncoding.EncodeToString([]byte(hash))
+	log.I("Hash: ", len(hash), hash)
+
+
+	pubKey, privKey := secp256k1.GenerateKeyPair()
+
+
+	str := hex.EncodeToString(hash[:])
+	log.I(str)
+
+	fmt.Println("Hash: ", )
+	fmt.Println("Public Key: ", hex.EncodeToString(pubKey[:]))
+	log.I("Public Key:", )
+	log.I("Private Key:", string(privKey))
+
+	// secp256k1.Sign()
+
+
 }
 
 func network_test() {
@@ -97,12 +129,27 @@ func db_test() {
 		log.I("value", string(v))
 	})
 
-	levelQueue := storage.ComposeRocksLevelQueue(rstorage, "incomingVertexQueue")
-	levelQueue.Push(1, []byte("83291"))
+	sQueue := storage.NewRocksSequenceQueue(rstorage, "iiiQueue")
+	sQueue.Push([]byte("111"))
+	sQueue.Push([]byte("222"))
+	sQueue.Push([]byte("333"))
 
-	result := levelQueue.Pop()
-	log.I("LevelQueue: Pop result: ", result)
+	result := sQueue.Pop()
+	log.I("Pop result: ", result)
+	result = sQueue.Pop()
+	log.I("Pop result: ", result)
+	result = sQueue.Pop()
+	log.I("Pop result: ", result)
+	result = sQueue.Pop()
+	log.I("Pop result: ", result)
 
+
+	table := storage.NewRocksTable(rstorage, "sampleTable")
+	table.InsertOrUpdate([]byte("key1"), []byte("111"))
+
+	val := table.Get([]byte("key1"))
+
+	log.I("Table got value: ", val)
 }
 
 type SampleEventHandler struct {

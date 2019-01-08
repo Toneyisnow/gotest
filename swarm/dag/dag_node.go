@@ -4,6 +4,7 @@ import (
 	"../network"
 	"encoding/json"
 	"fmt"
+	"github.com/smartswarm/go/log"
 	"io/ioutil"
 	"os"
 )
@@ -13,7 +14,8 @@ type DagNode struct {
 	NodeId int64
 	Device *network.NetDevice
 
-	GenesisVertexHash string
+	GenesisVertexHash []byte
+
 }
 
 type DagNodes struct {
@@ -24,19 +26,55 @@ type DagNodes struct {
 
 func LoadDagNodesFromFile(jsonFileName string) *DagNodes {
 
+	log.I("Begin LoadDagNodesFromFile")
 	jsonFile, err := os.Open(jsonFileName)
 
 	// if we os.Open returns an error then handle it
 	if err != nil {
 		fmt.Println(err)
 	}
-	defer jsonFile.Close()
 
 	byteValue, _ := ioutil.ReadAll(jsonFile)
 	dagNodes := new(DagNodes)
 	json.Unmarshal(byteValue, dagNodes)
 
+	jsonFile.Close()
+
+	log.I("End LoadDagNodesFromFile")
+
+	/*
+	pubKey, privKey := secp256k1.GenerateKeyPair()
+
+	dagNodes.Self.Device.PublicKey = pubKey
+	dagNodes.Self.Device.PrivateKey = privKey
+
+	for _, n := range dagNodes.Peers {
+
+		pubKey, privKey = secp256k1.GenerateKeyPair()
+		n.Device.PublicKey = pubKey
+	}
+
+	dagNodes.SaveToFile(jsonFileName)
+	*/
+
 	return dagNodes
+}
+
+func (this *DagNodes) SaveToFile(jsonFileName string) (err error) {
+
+	log.I("Begin SaveToFile")
+
+	contentBytes, err := json.MarshalIndent(this, "", "  ")
+	if err != nil {
+		fmt.Println(err)
+		return err
+	}
+
+	ioutil.WriteFile(jsonFileName, contentBytes, 0644)
+
+	log.I("End SaveToFile")
+
+	return nil
 }
 
 func (this *DagNodes) GetSelf() (*DagNode) {
