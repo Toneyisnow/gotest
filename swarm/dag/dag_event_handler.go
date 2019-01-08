@@ -19,7 +19,7 @@ type DagEventHandler struct {
 	_eventWorkers []*DagEventWorker
 }
 
-func ComposeDagEventHandler(engine *DagEngine) DagEventHandler {
+func NewDagEventHandler(engine *DagEngine) DagEventHandler {
 
 	handler := DagEventHandler{}
 	handler._eventQueue = make(chan *DagEvent, DAG_EVENT_QUEUE_MAX_LENGTH)

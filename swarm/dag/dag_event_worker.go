@@ -24,6 +24,14 @@ func ComposeDagEventWorker(queue chan *DagEvent, engine *DagEngine) *DagEventWor
 func (this *DagEventWorker) DoEvent(event *DagEvent) {
 
 	// Do the actual work here
+
+	if event.GetEventType() == DagEventType_VertexesData {
+
+		vertexesDataEvent := event.GetVertexesDataEvent()
+		for _, vertex := range vertexesDataEvent.Vertexes {
+			this._engine.PushIncomingVertex(vertex)
+		}
+	}
 }
 
 func (this *DagEventWorker) IsBusy() bool {

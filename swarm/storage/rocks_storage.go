@@ -125,7 +125,11 @@ func (storage *RocksStorage) SeekAll(prefix []byte, f func(value []byte)) error 
 	defer iter.Close()
 
 	for iter.Seek(prefix); iter.Valid(); iter.Next() {
-		f(iter.Value().Data())
+
+		key := iter.Key().Data()
+		if key != nil && len(key) >= len(prefix) && bytes.Equal(key[:len(prefix)], prefix) {
+			f(iter.Value().Data())
+		}
 	}
 	return nil
 }

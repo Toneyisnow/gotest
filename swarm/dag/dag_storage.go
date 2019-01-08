@@ -26,6 +26,7 @@ type DagStorage struct {
 	queueIncomingVertex *storage.RocksSequenceQueue
 	queueVertexDag *storage.RocksSequenceQueue
 	queueCandidate *storage.RocksSequenceQueue
+	queueQueen *storage.RocksSequenceQueue
 
 	levelqueueUndecidedCandidate *storage.RocksLevelQueue
 	queueUnconfirmedVertex *storage.RocksSequenceQueue
@@ -54,6 +55,12 @@ func NewDagStorage() *DagStorage {
 
 	dagStorage.queuePendingData = storage.NewRocksSequenceQueue(dagStorage.storage, "P")
 	dagStorage.queueIncomingVertex = storage.NewRocksSequenceQueue(dagStorage.storage, "I")
+	dagStorage.queueVertexDag = storage.NewRocksSequenceQueue(dagStorage.storage, "D")
+	dagStorage.queueCandidate = storage.NewRocksSequenceQueue(dagStorage.storage, "C")
+	dagStorage.queueQueen = storage.NewRocksSequenceQueue(dagStorage.storage, "Q")
+
+	dagStorage.levelqueueUndecidedCandidate = storage.NewRocksLevelQueue(dagStorage.storage, "UC")
+	dagStorage.queueUnconfirmedVertex = storage.NewRocksSequenceQueue(dagStorage.storage, "U")
 
 	return dagStorage
 }
@@ -65,10 +72,7 @@ func (this *DagStorage) PutPendingPayloadData(data PayloadData) {
 
 func (this *DagStorage) GetPendingPayloadData() []PayloadData {
 
-	this.queuePendingData.Pop(
-		func(val []byte) bool {
-			return true
-		})
+	this.queuePendingData.Pop()
 
 	result := make([]PayloadData, 0)
 

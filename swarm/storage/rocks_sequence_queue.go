@@ -3,6 +3,7 @@ package storage
 import (
 	"errors"
 	"sync"
+	"github.com/golang/protobuf/proto"
 )
 
 const (
@@ -16,6 +17,8 @@ type RocksSequenceQueue struct {
 	queueId    string
 	beginIndex uint32
 	endIndex   uint32
+
+	iterateIndex uint32
 	//// itemCount  uint32
 
 	queueMutex sync.Mutex
@@ -31,6 +34,8 @@ func NewRocksSequenceQueue(st *RocksStorage, queueId string) *RocksSequenceQueue
 
 	queue.beginIndex = queue.GetMetadataValueUint32("b")
 	queue.endIndex = queue.GetMetadataValueUint32("e")
+
+	queue.iterateIndex = queue.beginIndex
 
 	return queue
 }
@@ -61,8 +66,17 @@ func (this *RocksSequenceQueue) Push(value []byte) (err error) {
 	return nil
 }
 
+func (this *RocksSequenceQueue) PushProto(pb proto.Message) (err error) {
+
+	if data, err := proto.Marshal(pb); err != nil {
+		return err
+	} else {
+		return this.Push(data)
+	}
+}
+
 // Pop the value, and try to handle it with callback, if callback return false, then don't delete it from database
-func (this *RocksSequenceQueue) Pop(callback dataCallbackFunc) {
+func (this *RocksSequenceQueue) Pop() (result []byte) {
 
 	this.queueMutex.Lock()
 	defer this.queueMutex.Unlock()
@@ -79,9 +93,8 @@ func (this *RocksSequenceQueue) Pop(callback dataCallbackFunc) {
 		return
 	}
 
-	// Call function
-	if !callback(value) {
-		return
+	if key == nil || value == nil {
+		return nil
 	}
 
 	// Delete the current value and move beginIndex
@@ -94,8 +107,45 @@ func (this *RocksSequenceQueue) Pop(callback dataCallbackFunc) {
 	}
 	this.SetMetadataValueUint32("b", this.beginIndex)
 
-	return
+	return value
 }
+
+// Iterate the values from beginIndex to endIndex
+func (this *RocksSequenceQueue) StartIterate() {
+
+	this.iterateIndex = this.beginIndex
+}
+
+func (this *RocksSequenceQueue) IterateNext() (result []byte) {
+
+	this.queueMutex.Lock()
+	defer this.queueMutex.Unlock()
+
+	if this.iterateIndex == this.endIndex {
+		// No more value to get
+		return
+	}
+
+	bs := ConvertUintToBytes(this.iterateIndex)
+	key, value, err := this.storage.SeekNext(this.GenerateKey(bs))
+
+	if err != nil {
+		return
+	}
+
+	if key == nil || value == nil {
+		return nil
+	}
+
+	if this.iterateIndex < RocksQueueMaxIndex {
+		this.iterateIndex ++
+	} else {
+		this.iterateIndex = 0
+	}
+
+	return value
+}
+
 
 func (this *RocksSequenceQueue) DataSize() uint32 {
 

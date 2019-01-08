@@ -3,6 +3,7 @@ package storage
 import (
 	"errors"
 	"sync"
+	"github.com/golang/protobuf/proto"
 )
 
 const (
@@ -21,6 +22,8 @@ type RocksLevelQueue struct {
 	lastKey []byte
 	nowIndex uint32
 
+	iterateKey []byte
+
 	itemCount uint32
 	queueMutex sync.Mutex
 }
@@ -36,6 +39,7 @@ func NewRocksLevelQueue(storage *RocksStorage, queueId string) *RocksLevelQueue 
 	queue.nowIndex = queue.GetMetadataValueUint32("n")
 	queue.lastKey = queue.GetMetadataValueBytes("l")
 	queue.itemCount = queue.GetMetadataValueUint32("c")
+	queue.iterateKey = queue.lastKey
 
 	return queue
 }
@@ -71,8 +75,17 @@ func (this *RocksLevelQueue) Push(level uint32, value []byte) (err error) {
 	return nil
 }
 
+func (this *RocksLevelQueue) PushProto(level uint32, pb proto.Message) (err error) {
+
+	if data, err := proto.Marshal(pb); err != nil {
+		return err
+	} else {
+		return this.Push(level, data)
+	}
+}
+
 // Pop the value, and try to handle it with callback, if callback return false, then don't delete it from database
-func (this *RocksLevelQueue) Pop(callback dataCallbackFunc) {
+func (this *RocksLevelQueue) Pop() (result []byte) {
 
 	this.queueMutex.Lock()
 	defer this.queueMutex.Unlock()
@@ -94,7 +107,7 @@ func (this *RocksLevelQueue) Pop(callback dataCallbackFunc) {
 	}
 
 	// If there is no begin key, should seek from the start
-	if value == nil {
+	if value == nil && this.itemCount > 0 {
 		key, value, err = this.storage.SeekNext(queueKey)
 		if err != nil {
 			return
@@ -102,10 +115,6 @@ func (this *RocksLevelQueue) Pop(callback dataCallbackFunc) {
 	}
 
 	if key == nil || value == nil {
-		return
-	}
-
-	if !callback(value) {
 		return
 	}
 
@@ -117,7 +126,48 @@ func (this *RocksLevelQueue) Pop(callback dataCallbackFunc) {
 	this.itemCount = this.itemCount - 1
 	this.SetMetadataValueUint32("c", this.itemCount)
 
-	return
+	return value
+}
+
+func (this *RocksLevelQueue) StartIterate() {
+
+	this.iterateKey = this.lastKey
+}
+
+func (this *RocksLevelQueue) IterateNext() (result []byte) {
+
+	this.queueMutex.Lock()
+	defer this.queueMutex.Unlock()
+
+	if this.itemCount <= 0 {
+		// Queue is empty
+		return
+	}
+
+	queueKey := this.GetContainerKey()
+	lastKey := queueKey
+	if this.iterateKey != nil {
+		lastKey = append(lastKey, this.iterateKey...)
+	}
+
+	key, value, err := this.storage.SeekNext(lastKey)
+	if err != nil {
+		return
+	}
+
+	// If there is no begin key, should seek from the start
+	if value == nil && this.itemCount > 0 {
+		key, value, err = this.storage.SeekNext(queueKey)
+		if err != nil {
+			return
+		}
+	}
+
+	if key == nil || value == nil {
+		return
+	}
+
+	return value
 }
 
 func (this *RocksLevelQueue) DataSize() uint32 {
