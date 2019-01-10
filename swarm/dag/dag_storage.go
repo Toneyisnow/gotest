@@ -8,6 +8,10 @@ import (
 	"sync"
 )
 
+const (
+	QueueCapacity = 10000
+)
+
 type DagStorage struct {
 
 	storage *storage.RocksStorage
@@ -53,14 +57,14 @@ func NewDagStorage() *DagStorage {
 
 	dagStorage.storage = storage.ComposeRocksDBInstance("swarmdag")
 
-	dagStorage.queuePendingData = storage.NewRocksSequenceQueue(dagStorage.storage, "P")
-	dagStorage.queueIncomingVertex = storage.NewRocksSequenceQueue(dagStorage.storage, "I")
-	dagStorage.queueVertexDag = storage.NewRocksSequenceQueue(dagStorage.storage, "D")
-	dagStorage.queueCandidate = storage.NewRocksSequenceQueue(dagStorage.storage, "C")
-	dagStorage.queueQueen = storage.NewRocksSequenceQueue(dagStorage.storage, "Q")
+	dagStorage.queuePendingData = storage.NewRocksSequenceQueue(dagStorage.storage, "P", QueueCapacity)
+	dagStorage.queueIncomingVertex = storage.NewRocksSequenceQueue(dagStorage.storage, "I", QueueCapacity)
+	dagStorage.queueVertexDag = storage.NewRocksSequenceQueue(dagStorage.storage, "D", QueueCapacity)
+	dagStorage.queueCandidate = storage.NewRocksSequenceQueue(dagStorage.storage, "C", QueueCapacity)
+	dagStorage.queueQueen = storage.NewRocksSequenceQueue(dagStorage.storage, "Q", QueueCapacity)
 
-	dagStorage.levelqueueUndecidedCandidate = storage.NewRocksLevelQueue(dagStorage.storage, "UC")
-	dagStorage.queueUnconfirmedVertex = storage.NewRocksSequenceQueue(dagStorage.storage, "U")
+	dagStorage.levelqueueUndecidedCandidate = storage.NewRocksLevelQueue(dagStorage.storage, "UC", QueueCapacity)
+	dagStorage.queueUnconfirmedVertex = storage.NewRocksSequenceQueue(dagStorage.storage, "U", QueueCapacity)
 
 	return dagStorage
 }

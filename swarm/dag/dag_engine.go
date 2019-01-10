@@ -136,22 +136,25 @@ func (this *DagEngine) ComposeVertexEvent() {
 		}
 	}
 
-	// Send the Vertex to 0-1 nodes
-	peerNode := SelectPeerNodeToSendVertex(this.dagStorage, this.dagNodes)
-	if peerNode != nil {
+	// Send the Vertex to 0-2 nodes
+	peerNodes := SelectPeerNodeToSendVertex(this.dagStorage, this.dagNodes)
+	if peerNodes != nil && len(peerNodes) != 0 {
 
-		// Compose Vertex event and send
-		vertexList, _ := FindPossibleUnknownVertexesForNode(this.dagStorage, peerNode)
-		event, _ := ComposeVertexEvent(101, vertexList)
-		data, _ := proto.Marshal(event)
+		for _, peerNode := range peerNodes {
 
-		resultChan := this.netProcessor.SendEventToDeviceAsync(peerNode.Device, data)
-		result := <-resultChan
+			// Compose Vertex event and send
+			vertexList, _ := FindPossibleUnknownVertexesForNode(this.dagStorage, peerNode)
+			event, _ := ComposeVertexEvent(101, vertexList)
+			data, _ := proto.Marshal(event)
 
-		if (result.Err != nil) {
-			log.I2("SendEvent finished. Result: eventId=[%d], err=[%s]", result.EventId, result.Err.Error())
-		} else {
-			log.I2("SendEvent succeeeded. Result: eventId=[%d]", result.EventId)
+			resultChan := this.netProcessor.SendEventToDeviceAsync(peerNode.Device, data)
+			result := <-resultChan
+
+			if (result.Err != nil) {
+				log.I2("SendEvent finished. Result: eventId=[%d], err=[%s]", result.EventId, result.Err.Error())
+			} else {
+				log.I2("SendEvent succeeeded. Result: eventId=[%d]", result.EventId)
+			}
 		}
 	}
 

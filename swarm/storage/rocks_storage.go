@@ -103,7 +103,7 @@ func newRocksTransactionStorage(databaseFullPath string) (*RocksStorage, error) 
 	seekable, err := gorocksdb.OpenDb(opts, databaseFullPath)
 
 	rOptions := gorocksdb.NewDefaultReadOptions()
-	rOptions.SetIterateUpperBound(ConvertUintToBytes(^uint32(0)))
+	rOptions.SetIterateUpperBound(ConvertUint32ToBytes(^uint32(0)))
 
 	storage := &RocksStorage{
 		db:     db,
@@ -230,7 +230,7 @@ func (storage *RocksStorage) LoadProto(key string, pb proto.Message) error {
 }
 
 // This should be moved to common utils method
-func ConvertUintToBytes(value uint32) []byte {
+func ConvertUint32ToBytes(value uint32) []byte {
 
 	bs := make([]byte, 4)
 	binary.BigEndian.PutUint32(bs, value)
@@ -240,6 +240,18 @@ func ConvertUintToBytes(value uint32) []byte {
 
 func ConvertBytesToUint32(value []byte) uint32 {
 	return binary.BigEndian.Uint32(value)
+}
+
+func ConvertUint64ToBytes(value uint64) []byte {
+
+	bs := make([]byte, 8)
+	binary.BigEndian.PutUint64(bs, value)
+
+	return bs
+}
+
+func ConvertBytesToUint64(value []byte) uint64 {
+	return binary.BigEndian.Uint64(value)
 }
 
 // // EnableBatch enable batch write.

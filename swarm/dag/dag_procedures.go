@@ -9,7 +9,7 @@ const (
 )
 
 // Choose one DagNode to send vertexes that it might not know, return nil if no need to send
-func SelectPeerNodeToSendVertex(storage *DagStorage, nodes *DagNodes) (node *DagNode) {
+func SelectPeerNodeToSendVertex(storage *DagStorage, nodes *DagNodes) (results []*DagNode) {
 
 	return nil
 }
