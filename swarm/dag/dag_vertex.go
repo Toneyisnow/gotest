@@ -13,7 +13,7 @@ import (
 
 var _createVertexMutex sync.Mutex
 
-func CreateVertex(selfNode *DagNode, peerParent *DagVertex) (vertex *DagVertex, err error) {
+func CreateVertex(dagStorage *DagStorage, selfNode *DagNode, peerParent *DagVertex) (vertex *DagVertex, err error) {
 
 	if selfNode == nil {
 		log.W("CreateVertex: selfNode is nil.")
@@ -24,9 +24,6 @@ func CreateVertex(selfNode *DagNode, peerParent *DagVertex) (vertex *DagVertex, 
 	defer _createVertexMutex.Unlock()
 
 	vertex = new(DagVertex)
-
-	dagStorage := DagStorageGetInstance()
-	vertexDataList := dagStorage.GetPendingPayloadData()
 
 	vertex.CreatorNodeId = selfNode.NodeId
 	content := new(DagVertexContent)
@@ -42,8 +39,13 @@ func CreateVertex(selfNode *DagNode, peerParent *DagVertex) (vertex *DagVertex, 
 		content.PeerParentHash = nil
 	}
 
-	for _, d := range vertexDataList {
-		content.Data = append(content.Data, []byte(d))
+	dagStorage.queuePendingData.StartIterate()
+	for  {
+		_, data := dagStorage.queuePendingData.IterateNext()
+		if data == nil {
+			break
+		}
+		content.Data = append(content.Data, []byte(data))
 	}
 	vertex.Content = content
 
@@ -62,6 +64,9 @@ func CreateVertex(selfNode *DagNode, peerParent *DagVertex) (vertex *DagVertex, 
 
 	// Save to database
 	vertex.SaveToStorage()
+
+	// Clear the pending queue data
+	dagStorage.queuePendingData.Clear()
 
 	err = nil
 	return

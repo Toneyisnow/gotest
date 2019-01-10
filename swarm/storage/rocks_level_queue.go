@@ -175,3 +175,8 @@ func (this *RocksLevelQueue) DataSize() uint32 {
 
 	return this.itemCount
 }
+
+func (this *RocksLevelQueue) IsFull() bool {
+
+	return this.itemCount >= this.capacity
+}

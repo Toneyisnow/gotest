@@ -200,3 +200,19 @@ func (this *RocksSequenceQueue) DataSize() uint32 {
 
 	return this.itemCount
 }
+
+func (this *RocksSequenceQueue) IsFull() bool {
+
+	return this.itemCount >= this.capacity
+}
+
+func (this *RocksSequenceQueue) Clear() {
+
+	for this.itemCount > 0 {
+		value := this.Pop()
+
+		if value == nil {
+			break
+		}
+	}
+}

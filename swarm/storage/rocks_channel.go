@@ -3,11 +3,11 @@ package storage
 import (
 
 	"github.com/golang/protobuf/proto"
-	"github.com/smartswarm/go/log"
 )
 
 type RocksChannel struct {
 
+	capacity uint32
 	sequenceQueue *RocksSequenceQueue
 	channel chan bool
 }
@@ -16,8 +16,9 @@ func NewRocksChannel(storage *RocksStorage, channelId string, capacity uint32) *
 
 	channel := new(RocksChannel)
 
+	channel.capacity = capacity
 	channel.sequenceQueue = NewRocksSequenceQueue(storage, channelId, capacity)
-	channel.channel = make(chan bool)
+	channel.channel = make(chan bool, capacity)
 
 
 	return channel
@@ -26,7 +27,7 @@ func NewRocksChannel(storage *RocksStorage, channelId string, capacity uint32) *
 // Load all of the storage queue data into channel
 func (this *RocksChannel) Reload() {
 
-	this.channel = make(chan bool)
+	this.channel = make(chan bool, this.capacity)
 
 	for {
 		_, value := this.sequenceQueue.IterateNext()
@@ -52,19 +53,20 @@ func (this *RocksChannel) Push(value []byte) {
 }
 
 // Handling for the output of the channel
-func (this *RocksChannel) HandleProto(handler func (index uint32, pb proto.Message) bool) {
+func (this *RocksChannel) Listen(listener func (data []byte) ) {
 
 	for {
-		signal := <-this.channel
+		<-this.channel
 
 		this.sequenceQueue.StartIterate()
-		index, value := this.sequenceQueue.IterateNext()
+		_, value := this.sequenceQueue.IterateNext()
 
-		obj proto.Message
-		err := proto.Unmarshal(value, obj)
+		if value == nil {
+			continue
+		}
 
-		this.dagStorage.queueIncomingVertex.Pop()
+		listener(value)
 
+		this.sequenceQueue.Pop()
 	}
-
 }
