@@ -11,7 +11,7 @@ import (
 
 type DagNode struct {
 
-	NodeId int64
+	NodeId uint64
 	Device *network.NetDevice
 
 	GenesisVertexHash []byte
@@ -81,7 +81,12 @@ func (this *DagNodes) GetSelf() (*DagNode) {
 	return this.Self
 }
 
-func (this *DagNodes) GetPeerNodeById(nodeId int64) (*DagNode) {
+func (this *DagNodes) AllNodes() []*DagNode {
+
+	return append(this.Peers, this.Self)
+}
+
+func (this *DagNodes) GetPeerNodeById(nodeId uint64) (*DagNode) {
 
 	if (nodeId == 0) {
 		return nil
@@ -118,4 +123,9 @@ func (this *DagNodes) FindCandidateNodesToSendVertex(maxCount int) []*DagNode {
 
 
 	return result
+}
+
+func (this *DagNodes) GetMajorityCount() int {
+
+	return len(this.AllNodes()) * 2 / 3
 }

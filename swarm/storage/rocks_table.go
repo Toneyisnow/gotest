@@ -35,15 +35,18 @@ func (this *RocksTable) InsertOrUpdate(key []byte, value []byte) (err error) {
 
 func (this *RocksTable) Get(key []byte) []byte {
 
-	this.tableUpdateMutex.Lock()
-	defer this.tableUpdateMutex.Unlock()
-
 	value, err := this.storage.Get(this.GenerateKey(key))
 	if err != nil {
 		return nil
 	}
 
 	return value
+}
+
+func (this *RocksTable) Exists(key []byte) bool {
+
+	value := this.Get(key)
+	return (value != nil)
 }
 
 func (this *RocksTable) Delete(key []byte) error {

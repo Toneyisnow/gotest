@@ -25,14 +25,20 @@ type DagStorage struct {
 
 	// All tables defined
 	tableVertex *storage.RocksTable
-	tableVertexDag *storage.RocksTable
-	tableVertexStatus *storage.RocksTable
 	tableCandidate *storage.RocksTable
 	tableNodeLatestVertex *storage.RocksTable
+
+	tableVertexLink *storage.RocksTable
+	tableVertexStatus *storage.RocksTable
+	tableVertexConnection *storage.RocksTable
 	tableCandidateVote *storage.RocksTable
 
 	// All queues defined
-	queuePendingData *storage.RocksSequenceQueue
+	queuePendingData            *storage.RocksSequenceQueue
+
+	// All levelQueues defined
+	levelQueueUnconfirmedVertex   *storage.RocksLevelQueue
+	levelQueueUndecidedCandidate  *storage.RocksLevelQueue
 
 	// All channels defined
 	chanIncomingVertex *storage.RocksChannel
@@ -40,15 +46,14 @@ type DagStorage struct {
 	chanSettledCandidate *storage.RocksChannel
 	chanSettledQueen *storage.RocksChannel
 
+	/*
 	// Queue: Incoming Vertex
 	queueIncomingVertex *storage.RocksSequenceQueue
 	queueVertexDag *storage.RocksSequenceQueue
 	queueCandidate *storage.RocksSequenceQueue
 	queueQueen *storage.RocksSequenceQueue
+	*/
 
-	levelqueueUndecidedCandidate *storage.RocksLevelQueue
-	queueUnconfirmedVertex *storage.RocksSequenceQueue
-	
 }
 
 var dagStorage *DagStorage
@@ -71,9 +76,40 @@ func NewDagStorage() *DagStorage {
 
 	dagStorage.storage = storage.ComposeRocksDBInstance("swarmdag")
 
+	// ------ Initialize the table data ------
+
+	// Vertex Table: key:[vertex_hash] value:[vertex_bytes]
+	dagStorage.tableVertex = storage.NewRocksTable(dagStorage.storage, "V")
+
+	// Candidate Table: key:[nodeId+level] value:[vertex_hash]
+	dagStorage.tableCandidate = storage.NewRocksTable(dagStorage.storage, "C")
+
+	// Last Vertex Table: key:[nodeId] value:[vertex_hash]
+	dagStorage.tableNodeLatestVertex = storage.NewRocksTable(dagStorage.storage, "NV")
+
+	// Vertex Parent Table: key:[vertex_hash] value:[self_parent_hash+peer_parent_hash]
+	dagStorage.tableVertexLink = storage.NewRocksTable(dagStorage.storage, "VD")
+
+	// Vertex Status Table: key:[vertex_hash] value:[level+isCandidate+isQueen+status]
+	dagStorage.tableVertexStatus = storage.NewRocksTable(dagStorage.storage, "VS")
+
+	// Vertex Connection Table: key:[vertex_hash+vertex_hash] value:[nodeId1, nodeId2, ...]
+	dagStorage.tableVertexConnection = storage.NewRocksTable(dagStorage.storage, "VR")
+
+	// Candidate Vote Table: key:[vertex_hash+vertex_hash] value:[bool]
+	dagStorage.tableCandidateVote = storage.NewRocksTable(dagStorage.storage, "CV")
+
+
+	// ------ Initialize the queue data ------
 	dagStorage.queuePendingData = storage.NewRocksSequenceQueue(dagStorage.storage, "P", PendingPayloadBufferSize)
 
-	// Loading the Channel data
+
+	// ------ Initialize the levelQueue data------
+	dagStorage.levelQueueUnconfirmedVertex = storage.NewRocksLevelQueue(dagStorage.storage, "UV", QueueCapacity)
+	dagStorage.levelQueueUndecidedCandidate = storage.NewRocksLevelQueue(dagStorage.storage, "UC", QueueCapacity)
+
+
+	// ------  Loading the Channel data ------
 	dagStorage.chanIncomingVertex = storage.NewRocksChannel(dagStorage.storage, "I", IncomingVertexChannelCapacity)
 	dagStorage.chanIncomingVertex.Reload()
 
@@ -85,15 +121,6 @@ func NewDagStorage() *DagStorage {
 
 	dagStorage.chanSettledQueen = storage.NewRocksChannel(dagStorage.storage, "SQ", SettledQueenChannelCapacity)
 	dagStorage.chanSettledQueen.Reload()
-
-
-	dagStorage.queueIncomingVertex = storage.NewRocksSequenceQueue(dagStorage.storage, "I", QueueCapacity)
-	dagStorage.queueVertexDag = storage.NewRocksSequenceQueue(dagStorage.storage, "D", QueueCapacity)
-	dagStorage.queueCandidate = storage.NewRocksSequenceQueue(dagStorage.storage, "C", QueueCapacity)
-	dagStorage.queueQueen = storage.NewRocksSequenceQueue(dagStorage.storage, "Q", QueueCapacity)
-
-	dagStorage.levelqueueUndecidedCandidate = storage.NewRocksLevelQueue(dagStorage.storage, "UC", QueueCapacity)
-	dagStorage.queueUnconfirmedVertex = storage.NewRocksSequenceQueue(dagStorage.storage, "U", QueueCapacity)
 
 	return dagStorage
 }

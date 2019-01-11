@@ -4,24 +4,25 @@ package dag;
 
 message DagVertexStatus {
 
-    int64 level = 7;
+    uint32 level = 7;
 
     // Queen could decide which node underneath could be accepted or rejected
     bool is_queen = 8;
 
-    // The candicates can be promoted to queen
+    // The candidates can be promoted to queen
     bool is_candidate = 9;
 
     int32 status = 10;
 }
 
-message DagVertexDag {
+message DagVertexLink {
 
-    string self_parent_hash = 1;
-    string peer_parent_hash = 2;
+    uint64 node_id = 1;
+    bytes self_parent_hash = 2;
+    bytes peer_parent_hash = 3;
 }
 
-message DagVertexRelationship {
+message DagVertexConnection {
 
-    repeated int64 node_id_list = 1;
+    repeated uint64 node_id_list = 1;
 }

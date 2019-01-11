@@ -175,7 +175,7 @@ func (this *DagEngine) OnIncomingVertex(data []byte) {
 	vertex := &DagVertex{}
 	proto.Unmarshal(data, vertex)
 
-	decision := ProcessIncomingVertex(this.dagStorage, vertex)
+	decision := ProcessIncomingVertex(this.dagStorage, this.dagNodes, vertex)
 
 	switch decision {
 		case ProcessResult_Yes:
@@ -198,7 +198,7 @@ func (this *DagEngine) OnSettledVertex(hash []byte) {
 
 	log.I("Begin OnSettledVertex")
 
-	result := ProcessVertexAndDecideCandidate(this.dagStorage, hash)
+	result := ProcessVertexAndDecideCandidate(this.dagStorage, this.dagNodes, hash)
 	log.I("ProcessVertexAndDecideCandidate: result=", result)
 
 	switch result {

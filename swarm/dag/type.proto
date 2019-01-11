@@ -43,7 +43,7 @@ message DagEvent {
 
 message DagVertex {
 
-    int64 creator_node_id = 1;
+    uint64 creator_node_id = 1;
 
     bytes signature = 2;          // The signature (encryption of the hash)
     bytes hash = 3;               // The hash of the content, should be 32 Bytes (SHA256)
@@ -58,7 +58,7 @@ message DagVertexContent {
     bytes peer_parent_hash = 3;
 
     // Level of the vertex, each node should calculate by their own, not trust the value that passed in
-    int64 level = 4;
+    uint32 level = 4;
 
     // Queen could decide which node underneath could be accepted or rejected
     bool is_queen = 5;
