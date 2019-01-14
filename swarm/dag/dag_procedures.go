@@ -25,6 +25,12 @@ const (
 	CandidateDecision_DecideYes = 4
 )
 
+type VertexConfirmResult int
+const (
+	VertexConfirmResult_Accepted = 1
+	VertexConfirmResult_Rejected = 2
+)
+
 // Choose one DagNode to send vertexes that it might not know, return nil if no need to send
 func SelectPeerNodeToSendVertex(storage *DagStorage, nodes *DagNodes) (results []*DagNode) {
 
@@ -203,10 +209,10 @@ func ProcessCandidateVote(dagStorage *DagStorage, dagNodes *DagNodes, nowCandida
 		return ProcessResult_No
 	}
 
-	newQueenFound := ProcessResult(ProcessResult_No)
+	newQueenUpdated := ProcessResult(ProcessResult_No)
 
 	dagStorage.levelQueueUndecidedCandidate.StartIterate()
-	targetCandidateHash := dagStorage.levelQueueUndecidedCandidate.IterateNext()
+	targetCandidateIndex, targetCandidateHash := dagStorage.levelQueueUndecidedCandidate.IterateNext()
 	for targetCandidateHash != nil {
 
 		targetCandidateStatus := GetVertexStatus(dagStorage, targetCandidateHash)
@@ -215,7 +221,7 @@ func ProcessCandidateVote(dagStorage *DagStorage, dagNodes *DagNodes, nowCandida
 			// Coin round to decide Yes or No
 			// TODO: just put No Decision for now
 			SetCandidateDecision(dagStorage, nowCandidateHash, targetCandidateHash, CandidateDecision_DecideNo)
-			dagStorage.levelQueueUndecidedCandidate.Pop()
+			dagStorage.levelQueueUndecidedCandidate.Delete(targetCandidateIndex)
 
 		} else if nowCandidateStatus.Level > targetCandidateStatus.Level + 1 {
 
@@ -252,15 +258,26 @@ func ProcessCandidateVote(dagStorage *DagStorage, dagNodes *DagNodes, nowCandida
 				SetCandidateDecision(dagStorage, nowCandidateHash, targetCandidateHash, CandidateDecision_DecideYes)
 
 				// Change the candidate to queen
+				targetCandidateStatus.IsQueenDecided = true
 				targetCandidateStatus.IsQueen = true
 				SetVertexStatus(dagStorage, targetCandidateHash, targetCandidateStatus)
 
 				onQueenFound(targetCandidateHash)
-				dagStorage.levelQueueUndecidedCandidate.Pop()
-				newQueenFound = ProcessResult_Yes
+				dagStorage.levelQueueUndecidedCandidate.Delete(targetCandidateIndex)
+				newQueenUpdated = ProcessResult_Yes
 
 			} else if noCount >= dagNodes.GetMajorityCount() {
 				SetCandidateDecision(dagStorage, nowCandidateHash, targetCandidateHash, CandidateDecision_DecideNo)
+
+				// Change the candidate to queen
+				targetCandidateStatus.IsQueenDecided = true
+				targetCandidateStatus.IsQueen = false
+				SetVertexStatus(dagStorage, targetCandidateHash, targetCandidateStatus)
+
+				onQueenFound(targetCandidateHash)
+				dagStorage.levelQueueUndecidedCandidate.Delete(targetCandidateIndex)
+				newQueenUpdated = ProcessResult_Yes
+
 			} else if yesCount > noCount {
 				SetCandidateDecision(dagStorage, nowCandidateHash, targetCandidateHash, CandidateDecision_Yes)
 			} else if yesCount < noCount {
@@ -278,19 +295,92 @@ func ProcessCandidateVote(dagStorage *DagStorage, dagNodes *DagNodes, nowCandida
 			}
 		}
 
-		targetCandidateHash = dagStorage.levelQueueUndecidedCandidate.IterateNext();
+		targetCandidateIndex, targetCandidateHash = dagStorage.levelQueueUndecidedCandidate.IterateNext();
 	}
 
-	return newQueenFound
+	return newQueenUpdated
 }
 
 // Queen to decide whether a vertex is Accepted/Rejected
 // 1. For each vertex in unconfirmedVertexQueue, use the queen to decide
 // 2. If everything goes well, return Yes
 // 3. If wrong happen, return No. The upper will re-process the queen later
-func ProcessQueenDecision(dagStorage *DagStorage, queenHash []byte) ProcessResult {
+func ProcessQueenDecision(dagStorage *DagStorage, dagNodes *DagNodes, queenHash []byte,
+	vertexConfirmer func (vertexHash []byte, result VertexConfirmResult)) ProcessResult {
+
+	queenStatus := GetVertexStatus(dagStorage, queenHash)
+	if queenStatus == nil {
+		return ProcessResult_No
+	}
+
+	allCandidatesDecided := true
+	allQueensInLevel := make([][]byte, 0)
+	for _, node := range dagNodes.AllNodes() {
+
+		candidateHash, _ := GetCandidateForNode(dagStorage, node.NodeId, queenStatus.Level, true)
+		if candidateHash == nil {
+			continue
+		}
+
+		candidateStatus := GetVertexStatus(dagStorage, candidateHash)
+		if candidateStatus == nil || !candidateStatus.IsQueenDecided {
+			allCandidatesDecided = false
+			break
+		}
+
+		if candidateStatus.IsQueen {
+			allQueensInLevel = append(allQueensInLevel, candidateHash)
+		}
+	}
+
+	if !allCandidatesDecided || len(allQueensInLevel) == 0 {
+
+		// Not all candidates on this level decided is queen or not, or there is no queen in this level,
+		// just pass this and do nothing
+		return ProcessResult_Yes
+	}
+
+	// Start iterating all the vertexes, and using the AllQueensInLevel to decide accept/reject it
+	dagStorage.levelQueueUnconfirmedVertex.StartIterate()
+	targetVertexIndex, targetVertexHash := dagStorage.levelQueueUnconfirmedVertex.IterateNext()
+	for targetVertexHash != nil {
+
+		hasAllConnection := true
+		for _, iQueenHash := range allQueensInLevel {
+
+			connection := GetVertexConnection(dagStorage, iQueenHash, targetVertexHash)
+			if connection == nil || len(connection.NodeIdList) == 0 {
+				hasAllConnection = false
+				break
+			}
+		}
+
+		if hasAllConnection {
+
+			vertexConfirmer(targetVertexHash, VertexConfirmResult_Accepted)
+			dagStorage.levelQueueUnconfirmedVertex.Delete(targetVertexIndex)
+		}
+
+		targetVertexIndex, targetVertexHash = dagStorage.levelQueueUnconfirmedVertex.IterateNext()
+	}
 
 	return ProcessResult_Yes
+}
+
+func GetVertex(dagStorage *DagStorage, vertexHash []byte) *DagVertex {
+
+	vertexByte := dagStorage.tableVertex.Get(vertexHash)
+	if vertexByte == nil {
+		return nil
+	}
+
+	vertex := &DagVertex{}
+	err := proto.Unmarshal(vertexByte, vertex)
+	if err != nil {
+		return nil
+	}
+
+	return vertex
 }
 
 func GetVertexStatus(dagStorage *DagStorage, vertexHash []byte) *DagVertexStatus {
@@ -312,7 +402,10 @@ func GetVertexStatus(dagStorage *DagStorage, vertexHash []byte) *DagVertexStatus
 func SetVertexStatus(dagStorage *DagStorage, vertexHash []byte, status *DagVertexStatus) {
 
 	statusByte, _ := proto.Marshal(status)
-	dagStorage.tableVertexStatus.InsertOrUpdate(vertexHash, statusByte)
+	err := dagStorage.tableVertexStatus.InsertOrUpdate(vertexHash, statusByte)
+	if err != nil {
+
+	}
 }
 
 func GetVertexLink(dagStorage *DagStorage, vertexHash []byte) *DagVertexLink {

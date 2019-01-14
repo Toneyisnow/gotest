@@ -248,15 +248,27 @@ func (this *DagEngine) OnSettleQueen(queenHash []byte) {
 
 	log.I("Begin OnSettleQueen")
 
-	completed := ProcessQueenDecision(this.dagStorage, queenHash)
+	completed := ProcessQueenDecision(this.dagStorage, this.dagNodes, queenHash, func (vertexHash []byte, result VertexConfirmResult) {
+
+		// On Vertex Accepted
+		vertex := GetVertex(this.dagStorage, vertexHash)
+		if vertex == nil || vertex.GetContent() == nil || vertex.GetContent().GetData() == nil {
+			return
+		}
+
+		dataList := vertex.GetContent().GetData()
+		for _, data := range dataList {
+			this.payloadHandler.OnPayloadAccepted(data)
+		}
+	})
 
 	if completed == ProcessResult_Yes {
 
-		} else {
+	} else {
 
-			// If something wrong happened in processing, put the queen back to the queue and try again
-			this.dagStorage.chanSettledQueen.Push(queenHash)
-		}
+		// If something wrong happened in processing, put the queen back to the queue and try again
+		this.dagStorage.chanSettledQueen.Push(queenHash)
+	}
 
 	log.I("End OnSettleQueen")
 }

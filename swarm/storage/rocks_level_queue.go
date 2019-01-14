@@ -141,7 +141,7 @@ func (this *RocksLevelQueue) StartIterate() {
 	this.iterateIndex = this.beginIndex
 }
 
-func (this *RocksLevelQueue) IterateNext() (result []byte) {
+func (this *RocksLevelQueue) IterateNext() (resultIndex uint64, result []byte) {
 
 	this.queueMutex.Lock()
 	defer this.queueMutex.Unlock()
@@ -159,16 +159,39 @@ func (this *RocksLevelQueue) IterateNext() (result []byte) {
 	}
 
 	if key == nil || value == nil {
-		return nil
+		return 0, nil
 	}
-
-	result = value
 
 	// Found value, update index
 	subKey := this.GetSubKey(key)
-	this.iterateIndex = ConvertBytesToUint64(subKey) + 1
+
+	resultIndex = ConvertBytesToUint64(subKey)
+	result = value
+
+	this.iterateIndex = resultIndex + 1
 
 	return
+}
+
+
+func (this *RocksLevelQueue) Delete(index uint64) {
+
+	bs := ConvertUint64ToBytes(index)
+	key, value, err := this.storage.SeekNext(this.GenerateKey(bs))
+
+	if err != nil {
+		return
+	}
+
+	if key == nil || value == nil {
+		return
+	}
+
+	// Delete the current value and move beginIndex
+	err = this.storage.DelSeek(key)
+
+	this.itemCount --
+	this.SetMetadataValueUint32("c", this.itemCount)
 }
 
 func (this *RocksLevelQueue) DataSize() uint32 {

@@ -129,7 +129,7 @@ func db_test() {
 		log.I("value", string(v))
 	})
 
-	sQueue := storage.NewRocksSequenceQueue(rstorage, "iiiQueue")
+	sQueue := storage.NewRocksSequenceQueue(rstorage, "iiiQueue", 100)
 	sQueue.Push([]byte("111"))
 	sQueue.Push([]byte("222"))
 	sQueue.Push([]byte("333"))
@@ -174,8 +174,10 @@ func (this *SamplePayloadHandler) OnPayloadSubmitted(data dag.PayloadData) {
 
 func (this *SamplePayloadHandler) OnPayloadAccepted(data dag.PayloadData) {
 
+	log.I("OnPayloadAccepted: ", data)
 }
 
 func (this *SamplePayloadHandler) OnPayloadRejected(data dag.PayloadData) {
 
+	log.I("OnPayloadRejected: ", data)
 }
