@@ -38,36 +38,36 @@ func FindPossibleUnknownVertexesForNode(storage *DagStorage, node *DagNode) (res
 // 1. Validate the incoming vertex to be :1) signature correct, 2) hash correct. If not, return No
 // 2. Make sure both of the parents are already in the Dag, otherwise return Undecided
 // 3. Put the vertex into tableVertex, queueFreshVertex, levelQueueUnconfirmedVertex
-func ProcessIncomingVertex(dagStorage *DagStorage, nodes *DagNodes, vertex *DagVertex) ProcessResult {
+func ProcessIncomingVertex(dagStorage *DagStorage, nodes *DagNodes, vertex *DagVertex) (result ProcessResult, missingParentHash []byte) {
 
 	if dagStorage == nil || vertex == nil || vertex.Hash == nil || vertex.Signature == nil ||vertex.CreatorNodeId == 0 {
-		return ProcessResult_No
+		return ProcessResult_No, nil
 	}
 
 	// Confirm the hash and signature is correct
 	contentBytes, err := proto.Marshal(vertex.Content)
 	if err != nil {
 		log.W("Fatal: proto Marshal content failed.")
-		return ProcessResult_No
+		return ProcessResult_No, nil
 	}
 
 	calculatedHash := sha256.Sum256(contentBytes)[:]
 
 	if !bytes.Equal(vertex.Hash, calculatedHash) {
 		log.W("ProcessIncomingVertex: hash value is not correct")
-		return ProcessResult_No
+		return ProcessResult_No, nil
 	}
 
 	peerNode := nodes.GetPeerNodeById(vertex.CreatorNodeId)
 	if peerNode == nil {
 		log.W("ProcessIncomingVertex: cannot find creator node")
-		return ProcessResult_No
+		return ProcessResult_No, nil
 	}
 
 	calculatedSignature, err := secp256k1.Sign(calculatedHash, peerNode.Device.PrivateKey)
 	if !bytes.Equal(vertex.Signature, calculatedSignature) {
 		log.W("ProcessIncomingVertex: signature is not matching")
-		return ProcessResult_No
+		return ProcessResult_No, nil
 	}
 
 	// Find parents
@@ -76,28 +76,22 @@ func ProcessIncomingVertex(dagStorage *DagStorage, nodes *DagNodes, vertex *DagV
 
 	if selfParentHash == nil {
 		log.W("ProcessIncomingVertex: self parent hash is nil")
-		return ProcessResult_No
+		return ProcessResult_No, nil
 	}
 
-	undetermined := false
 	if !dagStorage.tableVertex.Exists(selfParentHash) {
-		undetermined = true
+		return ProcessResult_Undecided, selfParentHash
 	}
 
 	if peerParentHash != nil && !dagStorage.tableVertex.Exists(peerParentHash) {
-		undetermined = true
-	}
-
-	if undetermined {
-		// At least one of the parent is not in the Dag, return Undecided
-		return ProcessResult_Undecided
+		return ProcessResult_Undecided, peerParentHash
 	}
 
 	// Save the new vertex into tableVertex
 	vertexBytes, err := proto.Marshal(vertex)
 	if err != nil {
 		log.W("ProcessIncomingVertex: marshal vertex failed.")
-		return ProcessResult_No
+		return ProcessResult_No, nil
 	}
 	err = dagStorage.tableVertex.InsertOrUpdate(vertex.GetHash(), vertexBytes)
 
@@ -109,7 +103,7 @@ func ProcessIncomingVertex(dagStorage *DagStorage, nodes *DagNodes, vertex *DagV
 	vertexParentBytes, err := proto.Marshal(vertexLink)
 	err = dagStorage.tableVertexLink.InsertOrUpdate(vertex.GetHash(), vertexParentBytes)
 
-	return ProcessResult_Yes
+	return ProcessResult_Yes, nil
 }
 
 // ProcessVertexAndDecideCandidate:
@@ -118,11 +112,11 @@ func ProcessIncomingVertex(dagStorage *DagStorage, nodes *DagNodes, vertex *DagV
 // to be level+1
 // 3. If this is the first vertex in the level for this node, mark this vertex as candidate and return Yes, otherwise No
 // 4. Save this vertex into tableLatestVertex, tableCandidate
-func ProcessVertexAndDecideCandidate(dagStorage *DagStorage, dagNodes *DagNodes, vertexHash []byte) ProcessResult {
+func ProcessVertexAndDecideCandidate(dagStorage *DagStorage, dagNodes *DagNodes, vertexHash []byte) (result ProcessResult, missingParentHash []byte) {
 
 	link := GetVertexLink(dagStorage, vertexHash)
 	if link == nil {
-		return ProcessResult_No
+		return ProcessResult_No, nil
 	}
 
 	selfParentStatus := GetVertexStatus(dagStorage, link.SelfParentHash)
@@ -130,13 +124,18 @@ func ProcessVertexAndDecideCandidate(dagStorage *DagStorage, dagNodes *DagNodes,
 
 	peerParentLink := GetVertexLink(dagStorage, link.PeerParentHash)
 	if peerParentLink == nil {
-		return ProcessResult_No
+		return ProcessResult_No, nil
 	}
 
-	if selfParentStatus == nil || selfParentStatus.Level == 0 || peerParentStatus == nil || peerParentStatus.Level == 0 {
+	if selfParentStatus == nil || selfParentStatus.Level == 0 {
+		// At least one onf the parent status is not ready yet, just return Undecided and wait for processing again
+		return ProcessResult_Undecided, link.SelfParentHash
+	}
+
+	if peerParentStatus == nil || peerParentStatus.Level == 0 {
 
 		// At least one onf the parent status is not ready yet, just return Undecided and wait for processing again
-		return ProcessResult_Undecided
+		return ProcessResult_Undecided, link.PeerParentHash
 	}
 
 	currentLevel := selfParentStatus.Level
@@ -170,17 +169,19 @@ func ProcessVertexAndDecideCandidate(dagStorage *DagStorage, dagNodes *DagNodes,
 	// Save the vertex status
 	vertexStatusByte, _ := proto.Marshal(vertexStatus)
 	err := dagStorage.tableVertexStatus.InsertOrUpdate(vertexHash, vertexStatusByte)
+	if err != nil {
+		return ProcessResult_No, nil
+	}
 
 	// Push to queue and channel if necessary
 	err = dagStorage.levelQueueUnconfirmedVertex.Push(vertexStatus.Level, vertexHash)
 
 	if vertexStatus.IsCandidate {
 		err = dagStorage.levelQueueUndecidedCandidate.Push(vertexStatus.Level, vertexHash)
-		return ProcessResult_Yes
+		return ProcessResult_Yes, nil
 	} else {
-		return ProcessResult_No
+		return ProcessResult_No, nil
 	}
-	
 }
 
 // ProcessCandidateVote:
@@ -281,8 +282,58 @@ func GetVertexConnection(dagStorage *DagStorage, vertexHash []byte, targetVertex
 
 func CalculateVertexConnection(dagStorage *DagStorage, vertexHash []byte, targetVertexHash []byte) *DagVertexConnection {
 
-	connectionResult := &DagVertexConnection{}
+	connectionResult := GetVertexConnection(dagStorage, vertexHash, targetVertexHash)
+	if connectionResult != nil {
+		return connectionResult
+	}
 
+	connectionResult = &DagVertexConnection{}
+
+	vertexLink := GetVertexLink(dagStorage, vertexHash)
+	if vertexLink == nil || vertexLink.SelfParentHash == nil || vertexLink.PeerParentHash == nil {
+		// Something wrong unexpected, just return nil
+		return nil
+	}
+
+	selfParentConnection := GetVertexConnection(dagStorage, vertexLink.SelfParentHash, targetVertexHash)
+	peerParentConnection := GetVertexConnection(dagStorage, vertexLink.PeerParentHash, targetVertexHash)
+
+	connectionResult.NodeIdList = MergeUint64Array(selfParentConnection.NodeIdList, peerParentConnection.NodeIdList)
+	connectionResult.NodeIdList = MergeUint64Array(connectionResult.NodeIdList, []uint64{ vertexLink.NodeId })
 
 	return connectionResult
+}
+
+func MergeUint64Array(array1 []uint64, array2 []uint64) []uint64 {
+
+	if array1 == nil {
+		return array2
+	}
+
+	if array2 == nil {
+		return array1
+	}
+
+	result := make([]uint64, 0)
+
+	index1 := 0
+	index2 := 0
+
+	for index1 < len(array1) || index2 < len(array2) {
+
+		if index1 >= len(array1) || array1[index1] > array2[index2] {
+			result = append(result, array2[index2])
+			index2 ++
+		} else if index2 >= len(array2) || array2[index2] > array1[index1] {
+			result = append(result, array1[index1])
+			index1 ++
+		} else {
+			// They are equal, just pick one value
+			result = append(result, array1[index1])
+			index1 ++
+			index2 ++
+		}
+	}
+
+	return result
 }

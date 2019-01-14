@@ -2,6 +2,7 @@ package dag
 
 import (
 	"../network"
+	"../storage"
 	"github.com/gogo/protobuf/proto"
 	"github.com/smartswarm/go/log"
 	"os"
@@ -22,6 +23,9 @@ type DagEngine struct {
 	netTopology *network.NetTopology
 
 	dagStorage *DagStorage
+
+	incomingVertexDependency *storage.DependencyNotifier
+	processVertexDependency *storage.DependencyNotifier
 
 	// Stage 1: IncomingVertexChan: collect and save the vertexes that received from other nodes
 	// incomingVertexChan *storage.RocksChannel
@@ -77,6 +81,10 @@ func (this *DagEngine) Initialize() {
 
 	eventHandler := NewDagEventHandler(this)
 	this.netProcessor = network.CreateProcessor(this.netTopology, eventHandler)
+
+	this.incomingVertexDependency = storage.NewDependencyNotifier(this.dagStorage.chanIncomingVertex.Push)
+	this.processVertexDependency = storage.NewDependencyNotifier(this.dagStorage.chanSettledVertex.Push)
+
 
 	// Run every processing threads
 	go this.dagStorage.chanIncomingVertex.Listen(this.OnIncomingVertex)
@@ -175,19 +183,23 @@ func (this *DagEngine) OnIncomingVertex(data []byte) {
 	vertex := &DagVertex{}
 	proto.Unmarshal(data, vertex)
 
-	decision := ProcessIncomingVertex(this.dagStorage, this.dagNodes, vertex)
+	decision, missingParentVertex := ProcessIncomingVertex(this.dagStorage, this.dagNodes, vertex)
 
 	switch decision {
 		case ProcessResult_Yes:
+			// Push to next channel to process
 			this.dagStorage.chanSettledVertex.Push(vertex.Hash)
-			break;
+
+			// Also notify all the dependency vertexes to handle
+			this.incomingVertexDependency.Notify(vertex.Hash)
+			break
 		case ProcessResult_No:
 			// Discard this vertex if it's invalid
-			break;
+			break
 		case ProcessResult_Undecided:
 			// If it's undecided, put it back into the incoming queue
-			this.PushIncomingVertex(vertex)
-			break;
+			this.incomingVertexDependency.SetDependency(missingParentVertex, data)
+			break
 	}
 
 	log.I("End OnIncomingVertex")
@@ -198,16 +210,22 @@ func (this *DagEngine) OnSettledVertex(hash []byte) {
 
 	log.I("Begin OnSettledVertex")
 
-	result := ProcessVertexAndDecideCandidate(this.dagStorage, this.dagNodes, hash)
+	result, missingParentHash := ProcessVertexAndDecideCandidate(this.dagStorage, this.dagNodes, hash)
 	log.I("ProcessVertexAndDecideCandidate: result=", result)
 
 	switch result {
 		case ProcessResult_Yes:
+			// Push to next channel to process
 			this.dagStorage.chanSettledCandidate.Push(hash)
-			break;
+
+			// Also notify all the dependency vertexes to handle
+			this.processVertexDependency.Notify(hash)
+			break
 		case ProcessResult_No:
+			break
 		case ProcessResult_Undecided:
-			break;
+			this.processVertexDependency.SetDependency(missingParentHash, hash)
+			break
 	}
 	log.I("End OnSettledVertex")
 }
