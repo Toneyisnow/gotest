@@ -31,7 +31,7 @@ type DagStorage struct {
 	tableVertexLink *storage.RocksTable
 	tableVertexStatus *storage.RocksTable
 	tableVertexConnection *storage.RocksTable
-	tableCandidateVote *storage.RocksTable
+	tableCandidateDecision *storage.RocksTable
 
 	// All queues defined
 	queuePendingData            *storage.RocksSequenceQueue
@@ -96,8 +96,8 @@ func NewDagStorage() *DagStorage {
 	// Vertex Connection Table: key:[vertex_hash+vertex_hash] value:[nodeId1, nodeId2, ...]
 	dagStorage.tableVertexConnection = storage.NewRocksTable(dagStorage.storage, "VR")
 
-	// Candidate Vote Table: key:[vertex_hash+vertex_hash] value:[bool]
-	dagStorage.tableCandidateVote = storage.NewRocksTable(dagStorage.storage, "CV")
+	// Candidate Decision Table: key:[vertex_hash+vertex_hash] value:[Yes, No, DecideYes, DecideNo]
+	dagStorage.tableCandidateDecision = storage.NewRocksTable(dagStorage.storage, "CV")
 
 
 	// ------ Initialize the queue data ------
@@ -132,7 +132,7 @@ func (this *DagStorage) GetLastVertexOnNode(node *DagNode, hashOnly bool) (hash 
 		return nil, nil, errors.New("GetLastVertexOnNode failed: node is nil.")
 	}
 
-	vertexHash, err := this.storage.Get([]byte("L:" + strconv.FormatInt(node.NodeId, 16)))
+	vertexHash, err := this.storage.Get([]byte("L:" + strconv.FormatUint(node.NodeId, 16)))
 
 	if err != nil {
 		log.W("Got error while GetLastVertexOnNode: " + err.Error())

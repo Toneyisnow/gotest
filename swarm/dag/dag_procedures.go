@@ -10,11 +10,19 @@ import (
 )
 
 type ProcessResult int
-
 const (
 	ProcessResult_No        = 0
 	ProcessResult_Yes       = 1
 	ProcessResult_Undecided = 2
+)
+
+type CandidateDecision int
+const (
+	CandidateDecision_Unknown   = 0
+	CandidateDecision_No	    = 1
+	CandidateDecision_Yes       = 2
+	CandidateDecision_DecideNo  = 3
+	CandidateDecision_DecideYes = 4
 )
 
 // Choose one DagNode to send vertexes that it might not know, return nil if no need to send
@@ -185,25 +193,102 @@ func ProcessVertexAndDecideCandidate(dagStorage *DagStorage, dagNodes *DagNodes,
 }
 
 // ProcessCandidateVote:
-// 1. For the new given candidate, vote for each of the undecidedCandidate whether they are queen
-// 2. Save the vote results into tableVote
-func ProcessCandidateVote(storage *DagStorage, freshCandidateHash []byte) ProcessResult {
+// 1. For the new given candidate, vote for each of the undecidedCandidate with level-1 whether they are queen
+// 2. Iterate all undecidedCandidate, collect the votes from level-1
+func ProcessCandidateVote(dagStorage *DagStorage, dagNodes *DagNodes, nowCandidateHash []byte, onQueenFound func([]byte)) ProcessResult {
 
-	return ProcessResult_Yes
+	nowCandidateStatus := GetVertexStatus(dagStorage, nowCandidateHash)
+
+	if nowCandidateStatus == nil {
+		return ProcessResult_No
+	}
+
+	newQueenFound := ProcessResult(ProcessResult_No)
+
+	dagStorage.levelQueueUndecidedCandidate.StartIterate()
+	targetCandidateHash := dagStorage.levelQueueUndecidedCandidate.IterateNext()
+	for targetCandidateHash != nil {
+
+		targetCandidateStatus := GetVertexStatus(dagStorage, targetCandidateHash)
+		if nowCandidateStatus.Level >= targetCandidateStatus.Level + 10 {
+
+			// Coin round to decide Yes or No
+			// TODO: just put No Decision for now
+			SetCandidateDecision(dagStorage, nowCandidateHash, targetCandidateHash, CandidateDecision_DecideNo)
+			dagStorage.levelQueueUndecidedCandidate.Pop()
+
+		} else if nowCandidateStatus.Level > targetCandidateStatus.Level + 1 {
+
+			// Collect the vote results
+			yesCount := 0
+			noCount := 0
+			subLevel := nowCandidateStatus.Level - 1
+			for _, node := range dagNodes.AllNodes() {
+				subCandidateHash, _ := GetCandidateForNode(dagStorage, node.NodeId, subLevel, true)
+
+				// Only collect decisions from strong connected candidates
+				connection := GetVertexConnection(dagStorage, nowCandidateHash, subCandidateHash)
+				if len(connection.NodeIdList) < dagNodes.GetMajorityCount() {
+					continue
+				}
+
+				subDecision := GetCandidateDecision(dagStorage, subCandidateHash, targetCandidateHash)
+				switch subDecision {
+				case CandidateDecision_No:
+				case CandidateDecision_DecideNo:
+				case CandidateDecision_Unknown:
+					noCount ++
+					break;
+				case CandidateDecision_Yes:
+					yesCount ++
+					break;
+				case CandidateDecision_DecideYes:
+					// This will not happen, since it's already decided by the Decision Yes
+					break;
+				}
+			}
+
+			if yesCount >= dagNodes.GetMajorityCount() {
+				SetCandidateDecision(dagStorage, nowCandidateHash, targetCandidateHash, CandidateDecision_DecideYes)
+
+				// Change the candidate to queen
+				targetCandidateStatus.IsQueen = true
+				SetVertexStatus(dagStorage, targetCandidateHash, targetCandidateStatus)
+
+				onQueenFound(targetCandidateHash)
+				dagStorage.levelQueueUndecidedCandidate.Pop()
+				newQueenFound = ProcessResult_Yes
+
+			} else if noCount >= dagNodes.GetMajorityCount() {
+				SetCandidateDecision(dagStorage, nowCandidateHash, targetCandidateHash, CandidateDecision_DecideNo)
+			} else if yesCount > noCount {
+				SetCandidateDecision(dagStorage, nowCandidateHash, targetCandidateHash, CandidateDecision_Yes)
+			} else if yesCount < noCount {
+				SetCandidateDecision(dagStorage, nowCandidateHash, targetCandidateHash, CandidateDecision_No)
+			} else {
+				SetCandidateDecision(dagStorage, nowCandidateHash, targetCandidateHash, CandidateDecision_Unknown)
+			}
+
+		} else if nowCandidateStatus.Level == targetCandidateStatus.Level + 1 {
+
+			// Vote the candidate
+			connection := GetVertexConnection(dagStorage, nowCandidateHash, targetCandidateHash)
+			if connection != nil && len(connection.NodeIdList) > 0 {
+				SetCandidateDecision(dagStorage, nowCandidateHash, targetCandidateHash, CandidateDecision_Yes)
+			}
+		}
+
+		targetCandidateHash = dagStorage.levelQueueUndecidedCandidate.IterateNext();
+	}
+
+	return newQueenFound
 }
-
-// Return Yes if found new queen
-func ProcessCandidateCollectVote(storage *DagStorage, freshCandidateHash []byte) ProcessResult {
-
-	return ProcessResult_Yes
-}
-
 
 // Queen to decide whether a vertex is Accepted/Rejected
 // 1. For each vertex in unconfirmedVertexQueue, use the queen to decide
 // 2. If everything goes well, return Yes
 // 3. If wrong happen, return No. The upper will re-process the queen later
-func ProcessQueenDecision(storage *DagStorage, queenHash []byte) ProcessResult {
+func ProcessQueenDecision(dagStorage *DagStorage, queenHash []byte) ProcessResult {
 
 	return ProcessResult_Yes
 }
@@ -222,6 +307,12 @@ func GetVertexStatus(dagStorage *DagStorage, vertexHash []byte) *DagVertexStatus
 	}
 
 	return status
+}
+
+func SetVertexStatus(dagStorage *DagStorage, vertexHash []byte, status *DagVertexStatus) {
+
+	statusByte, _ := proto.Marshal(status)
+	dagStorage.tableVertexStatus.InsertOrUpdate(vertexHash, statusByte)
 }
 
 func GetVertexLink(dagStorage *DagStorage, vertexHash []byte) *DagVertexLink {
@@ -303,6 +394,28 @@ func CalculateVertexConnection(dagStorage *DagStorage, vertexHash []byte, target
 
 	return connectionResult
 }
+
+func GetCandidateDecision(dagStorage *DagStorage, vertexHash []byte, targetVertexHash []byte) CandidateDecision {
+
+	key := append(vertexHash, targetVertexHash...)
+	resultByte := dagStorage.tableCandidateDecision.Get(key)
+	if resultByte == nil {
+		return CandidateDecision_Unknown
+	}
+
+	result := storage.ConvertBytesToUint32(resultByte)
+	return CandidateDecision(result)
+}
+
+
+func SetCandidateDecision(dagStorage *DagStorage, vertexHash []byte, targetVertexHash []byte, decision CandidateDecision) {
+
+	key := append(vertexHash, targetVertexHash...)
+	value := storage.ConvertUint32ToBytes(uint32(decision))
+
+	dagStorage.tableCandidateDecision.InsertOrUpdate(key, value)
+}
+
 
 func MergeUint64Array(array1 []uint64, array2 []uint64) []uint64 {
 

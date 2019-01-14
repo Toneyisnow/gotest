@@ -236,8 +236,9 @@ func (this *DagEngine) OnSettledCandidate(candidateHash []byte) {
 	log.I("Begin OnSettledCandidate")
 
 	// The Collect vote method will decide new queens, and write into the chanSettledQueen
-	ProcessCandidateVote(this.dagStorage, candidateHash)
-	ProcessCandidateCollectVote(this.dagStorage, candidateHash)
+	ProcessCandidateVote(this.dagStorage, this.dagNodes, candidateHash, func(queenHash []byte) {
+		this.dagStorage.chanSettledQueen.Push(queenHash)
+	})
 
 	log.I("End OnSettledCandidate")
 }
