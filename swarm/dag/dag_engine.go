@@ -3,14 +3,20 @@ package dag
 import (
 	"../network"
 	"../storage"
+	"errors"
 	"github.com/gogo/protobuf/proto"
 	"github.com/smartswarm/go/log"
-	"os"
-	"strconv"
+	"time"
 )
 
 type PayloadData []byte
 
+type DagEngineStatus int
+const (
+	DagEngineStatus_Idle = 1
+	DagEngineStatus_Started = 2
+	DagEngineStatus_Connected = 3
+)
 
 type DagEngine struct {
 
@@ -21,6 +27,7 @@ type DagEngine struct {
 
 	dagNodes    *DagNodes
 	netTopology *network.NetTopology
+	dagConfig   *DagConfig
 
 	dagStorage *DagStorage
 
@@ -40,11 +47,14 @@ type DagEngine struct {
 	//queenQueue chan []byte
 
 	netProcessor *network.NetProcessor
+
+	EngineStatus DagEngineStatus
 }
 
-func ComposeDagEngine(handler PayloadHandler) *DagEngine {
+func NewDagEngine(config *DagConfig, handler PayloadHandler) *DagEngine {
 
 	engine := new(DagEngine)
+	engine.dagConfig = config
 	engine.BindHandler(handler)
 	engine.Initialize()
 
@@ -58,48 +68,49 @@ func (this *DagEngine) BindHandler(handler PayloadHandler) {
 
 func (this *DagEngine) Initialize() {
 
-	// this.pendingPayloadDataQueues = make([]PayloadData, 0)
-
-	this.dagNodes = LoadDagNodesFromFile("node-topology.json")
+	this.dagNodes = &this.dagConfig.DagNodes
 	this.netTopology = this.dagNodes.GetNetTopology()
 
-	if (len(os.Args) > 1) {
-		serverPort, _ := strconv.Atoi(os.Args[1])
-		this.netTopology.Self().Port = int32(serverPort)
-	}
+	this.EngineStatus = DagEngineStatus_Idle
 
-	// Create Channels
-	// this.incomingVertexChan = storage.NewRocksChannel(this.dagStorage.storage, "")
-
-	//this.settledVertexChan = new(storage.RocksChannel)
-
-	//this.freshCandidateQueue = make(chan []byte)
-	//this.queenQueue = make(chan []byte)
-
-
-	this.dagStorage = DagStorageGetInstance()
+	// Load the previous cache data from Database: PendingPayloadData
+	this.dagStorage = DagStorageGetInstance(this.dagConfig.StorageLocation)
 
 	eventHandler := NewDagEventHandler(this)
 	this.netProcessor = network.CreateProcessor(this.netTopology, eventHandler)
 
 	this.incomingVertexDependency = storage.NewDependencyNotifier(this.dagStorage.chanIncomingVertex.Push)
 	this.processVertexDependency = storage.NewDependencyNotifier(this.dagStorage.chanSettledVertex.Push)
-
-
-	// Run every processing threads
-	go this.dagStorage.chanIncomingVertex.Listen(this.OnIncomingVertex)
-	go this.dagStorage.chanSettledVertex.Listen(this.OnSettledVertex)
-	go this.dagStorage.chanSettledQueen.Listen((this.OnSettleQueen))
-
 }
 
 func (this *DagEngine) Start() {
 
 	log.I("[dag] Begin DagEngine.Start()")
 
-	// Load the previous cache data from Database: PendingPayloadData
+	this.netProcessor.StartServer()
+	this.EngineStatus = DagEngineStatus_Started
 
-	this.netProcessor.Start()
+	for {
+		this.RefreshConenction()
+		if this.EngineStatus == DagEngineStatus_Connected {
+			break
+		}
+		time.Sleep(3 * time.Second)
+	}
+
+	// Run every processing threads
+	go this.dagStorage.chanIncomingVertex.Listen(this.OnIncomingVertex)
+	go this.dagStorage.chanSettledVertex.Listen(this.OnSettledVertex)
+	go this.dagStorage.chanSettledQueen.Listen(this.OnSettleQueen)
+
+	// Keep making sure of the connection
+	go func() {
+		for {
+			this.RefreshConenction()
+			time.Sleep(3 * time.Second)
+		}
+	}()
+
 	log.I("[dag] End DagEngine.Start()")
 }
 
@@ -107,23 +118,81 @@ func (this *DagEngine) Stop() {
 
 }
 
+func (this *DagEngine) RefreshConenction() {
+
+	//log.I("[dag] Refreshing connection...")
+
+	// Establish connection to all other nodes, and return success if connected to majority of nodes
+	totalCount := 0
+	successConnectionCount := 1		// Count itself as one of connections
+	resultChans := make(chan bool)
+
+	for _, node := range this.dagNodes.Peers {
+
+		go func(device network.NetDevice, resultChan chan bool) {
+			//log.I("[dag] Trying to connect to device", device.Id, " ...")
+			result := <-this.netProcessor.ConnectToDeviceAsync(&device)
+			if result {
+				log.I("Connecting to device ", device.Id, " succeed.")
+				resultChans <- true
+				return
+			} else {
+				log.W("Connecting to device ", device.Id, " failed.")
+				resultChans <- false
+			}
+		}(*node.Device, resultChans)
+	}
+
+	log.I("[dag] Waiting for majority of nodes connected...")
+	expectedConnectionCount := this.dagNodes.GetMajorityCount()
+	for {
+		result :=<-resultChans
+
+		totalCount ++
+		if result {
+			successConnectionCount ++
+		}
+
+		log.I("[dag] Connection received. Count=", successConnectionCount, "Expected=", expectedConnectionCount)
+		if successConnectionCount >= expectedConnectionCount {
+			this.EngineStatus = DagEngineStatus_Connected
+			break
+		}
+
+		if totalCount >= len(this.dagNodes.Peers) {
+			// All Peers returned, but not enough success connection
+			this.EngineStatus = DagEngineStatus_Started
+			break
+		}
+	}
+}
+
 //
-func (this *DagEngine) SubmitPayload(data PayloadData) {
+func (this *DagEngine) SubmitPayload(data PayloadData) (err error) {
 
 	log.I("[dag] Begin SubmitPayload.")
 
-	this.dagStorage.queuePendingData.Push(data)
+	if this.EngineStatus != DagEngineStatus_Connected {
+		log.W("[dag] Cannot submit payload since the dagEngine is not connected to dag.")
+		return errors.New("cannot submit payload since dagEngine is not connected to dag")
+	}
+
+	err = this.dagStorage.queuePendingData.Push(data)
+	if err != nil {
+		return err
+	}
 
 	if this.dagStorage.queuePendingData.IsFull() {
 
 		// ComposePayloadVertex(nil)
-		this.ComposeVertexEvent()
+		this.composeVertexEvent()
 	}
 
 	log.I("[dag] End SubmitPayload.")
+	return nil
 }
 
-func (this *DagEngine) ComposeVertexEvent() {
+func (this *DagEngine) composeVertexEvent() {
 
 	log.I("[dag] Begin ComposeVertexEvent.")
 

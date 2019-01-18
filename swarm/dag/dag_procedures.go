@@ -65,9 +65,9 @@ func ProcessIncomingVertex(dagStorage *DagStorage, nodes *DagNodes, vertex *DagV
 		return ProcessResult_No, nil
 	}
 
-	calculatedHash := sha256.Sum256(contentBytes)[:]
+	calculatedHash := sha256.Sum256(contentBytes)
 
-	if !bytes.Equal(vertex.Hash, calculatedHash) {
+	if !bytes.Equal(vertex.Hash, calculatedHash[:]) {
 		log.W("ProcessIncomingVertex: hash value is not correct")
 		return ProcessResult_No, nil
 	}
@@ -78,7 +78,7 @@ func ProcessIncomingVertex(dagStorage *DagStorage, nodes *DagNodes, vertex *DagV
 		return ProcessResult_No, nil
 	}
 
-	calculatedSignature, err := secp256k1.Sign(calculatedHash, peerNode.Device.PrivateKey)
+	calculatedSignature, err := secp256k1.Sign(calculatedHash[:], peerNode.Device.PrivateKey)
 	if !bytes.Equal(vertex.Signature, calculatedSignature) {
 		log.W("ProcessIncomingVertex: signature is not matching")
 		return ProcessResult_No, nil
@@ -102,12 +102,10 @@ func ProcessIncomingVertex(dagStorage *DagStorage, nodes *DagNodes, vertex *DagV
 	}
 
 	// Save the new vertex into tableVertex
-	vertexBytes, err := proto.Marshal(vertex)
-	if err != nil {
+	if err := SaveVertex(dagStorage, vertex); err != nil {
 		log.W("ProcessIncomingVertex: marshal vertex failed.")
 		return ProcessResult_No, nil
 	}
-	err = dagStorage.tableVertex.InsertOrUpdate(vertex.GetHash(), vertexBytes)
 
 	// Save to tableVertexParent
 	vertexLink := &DagVertexLink{}
@@ -381,6 +379,17 @@ func GetVertex(dagStorage *DagStorage, vertexHash []byte) *DagVertex {
 	}
 
 	return vertex
+}
+
+func SaveVertex(dagStorage *DagStorage, vertex *DagVertex) (err error) {
+
+	vertexBytes, err := proto.Marshal(vertex)
+	if err != nil {
+		return err
+	}
+
+	err = dagStorage.tableVertex.InsertOrUpdate(vertex.GetHash(), vertexBytes)
+	return err
 }
 
 func GetVertexStatus(dagStorage *DagStorage, vertexHash []byte) *DagVertexStatus {

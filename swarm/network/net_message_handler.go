@@ -14,13 +14,15 @@ func HandleMessage(context *NetContext, message *NetMessage) {
 		return
 	}
 
-	log.I2("[network] handling message. context=[%s] message=[%s]", context._index, message.MessageId)
+
+
+	log.I2("[network] handling message. context=[%s] message=[%s]", context.index, message.MessageId)
 	if message.MessageType == NetMessageType_Event {
 
 		log.I("[network] EventMessage detected.")
 		eventMessage := message.GetEventMessage()
 
-		context._manager._processor.GetEventHandler().HandleEventData(context, eventMessage.Data)
+		context.contextManager.netProcessor.GetEventHandler().HandleEventData(context, eventMessage.Data)
 	}
 }
 

@@ -2,7 +2,6 @@ package network
 
 import (
 	"errors"
-	"flag"
 	"fmt"
 	"github.com/golang/protobuf/proto"
 	"github.com/gorilla/websocket"
@@ -113,12 +112,13 @@ func StartWebSocketListen(serverPort int32, handler ConnectionCallback) {
 
 func StartWebSocketDial(device *NetDevice) (socket *NetWebSocket, err error) {
 
-	retryCount := 5
-	retryInterval := 3 * time.Second
+	retryCount := 3
+	retryInterval := time.Second
 
 	var peeraddress = device.GetHostUrl()
-	var peeraddr = flag.String("peeraddr", peeraddress, "http service peeraddress")
-	u := url.URL{Scheme: "ws", Host: *peeraddr, Path: "/"}
+	// var peeraddr = flag.String("peeraddr", peeraddress, "http service peeraddress")
+	peeraddr := string(peeraddress)
+	u := url.URL{Scheme: "ws", Host: peeraddr, Path: "/"}
 
 	for i := 0; i < retryCount; i++ {
 

@@ -1,0 +1,44 @@
+{
+  "version": "0.1.0",
+  "storage_location": "/var/folders/swarm3/",
+  "nodes": {
+    "Self": {
+      "NodeId": 103,
+      "Device": {
+        "id": "103",
+        "ip_address": "127.0.0.1",
+        "port": 8003,
+        "public_key": "BLxa6w+YbO/7LeiJwnPGuvk9zfVOUSiNNd6Z/tmGDlXB+eHprAdUGbWjBMoUaJNpTZ/jLPs0bkHis7uvHAAk3+c=",
+        "private_key": "JHmvUIVZpyLOf4e9fFETTrHNnPrJvGI1n0J4wtW8yK4=",
+        "temp_public_key": null
+      },
+      "GenesisVertexHash": null
+    },
+    "Peers": [
+      {
+        "NodeId": 101,
+        "Device": {
+          "id": "101",
+          "ip_address": "127.0.0.1",
+          "port": 8001,
+          "public_key": "BB3vGSjcvzK/WOzTXWxotssgfkOKTi1vf33BTGPhACRaaANDav9DOVbQoKIYK/hRPX8z9BLrIy5zNySfabUfNmQ=",
+          "private_key": "",
+          "temp_public_key": null
+        },
+        "GenesisVertexHash": null
+      },
+      {
+        "NodeId": 102,
+        "Device": {
+          "id": "102",
+          "ip_address": "127.0.0.1",
+          "port": 8002,
+          "public_key": "BIcHWw5SPYISSkgxB/GaFnR6bV8ZQsv6w49mi0Q5cjJBGgU1ktdVmaylNmaSSHjCVgUEYdUytLL59joc6Vi+kXU=",
+          "private_key": "",
+          "temp_public_key": null
+        },
+        "GenesisVertexHash": null
+      }
+    ]
+  }
+}

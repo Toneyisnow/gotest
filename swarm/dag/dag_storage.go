@@ -21,6 +21,8 @@ const (
 
 type DagStorage struct {
 
+	osFilelocation string
+
 	storage *storage.RocksStorage
 
 	// All tables defined
@@ -59,22 +61,23 @@ type DagStorage struct {
 var dagStorage *DagStorage
 var dagStorageMutex sync.Mutex
 
-func DagStorageGetInstance() *DagStorage{
+func DagStorageGetInstance(storageLocation string) *DagStorage{
 
 	dagStorageMutex.Lock()
 	if (dagStorage == nil) {
-		dagStorage = NewDagStorage()
+		dagStorage = NewDagStorage(storageLocation)
 	}
 	dagStorageMutex.Unlock()
 
 	return dagStorage
 }
 
-func NewDagStorage() *DagStorage {
+func NewDagStorage(storageLocation string) *DagStorage {
 
 	dagStorage := new(DagStorage)
 
-	dagStorage.storage = storage.ComposeRocksDBInstance("swarmdag")
+	dagStorage.osFilelocation = storageLocation
+	dagStorage.storage = storage.ComposeRocksDBInstance(storageLocation + "swarmdag")
 
 	// ------ Initialize the table data ------
 

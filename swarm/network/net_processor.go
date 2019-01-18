@@ -15,83 +15,73 @@ const (
 
 type NetProcessor struct {
 
-	_option *NetOption
-	_eventHandler EventHandler
-	_contextManager *NetContextManager
-	_topology *NetTopology
+	option         *NetOption
+	eventHandler   EventHandler
+	contextManager *NetContextManager
+	topology       *NetTopology
 
-	_mu_status sync.Mutex
+	mu_status sync.Mutex
 
-	_status NetManagerStatus
+	status NetManagerStatus
 }
 
 func CreateProcessor(topo *NetTopology, handler EventHandler) *NetProcessor {
 
-	if (topo == nil || handler == nil) {
+	if topo == nil || handler == nil {
 		// throw exception here
 		return nil
 	}
 
 	processor := new(NetProcessor)
-	processor._option = DefaultOption()
-	processor._topology = topo
-	processor._eventHandler = handler
+	processor.option = DefaultOption()
+	processor.topology = topo
+	processor.eventHandler = handler
 
 	processor.Initialize()
-	processor._status = NetManagerStatus_Idle
+	processor.status = NetManagerStatus_Idle
 	return processor
 }
 
 func (this *NetProcessor) GetOption() *NetOption {
-	return this._option
+	return this.option
 }
 
 func (this *NetProcessor) GetEventHandler() EventHandler {
-	return this._eventHandler
+	return this.eventHandler
 }
 
 func (this *NetProcessor) Initialize() {
 
-	this._contextManager = CreateContextManager(this)
-	this._status = NetManagerStatus_Idle
+	this.contextManager = NewContextManager(this)
+	this.status = NetManagerStatus_Idle
 }
 
-func (this *NetProcessor) Start() {
+func (this *NetProcessor) StartServer() {
 
-	this._mu_status.Lock()
-	defer this._mu_status.Unlock()
+	this.mu_status.Lock()
+	defer this.mu_status.Unlock()
 
-	if (this._status == NetManagerStatus_Running) {
+	if this.status == NetManagerStatus_Running {
 		return
 	}
 
-	this._status = NetManagerStatus_Running
+	this.status = NetManagerStatus_Running
 
-	go StartWebSocketListen(this._topology.Self().Port, this.HandleIncomingConnection)
-
-	// Start to connect to peers
-
-	selfDevice := this._topology._self
-	for _, peer := range this._topology._peers {
-		if (peer.IPAddress != selfDevice.IPAddress && peer.Port != selfDevice.Port) {
-
-		}
-	}
-
+	go StartWebSocketListen(this.topology.Self().Port, this.HandleIncomingConnection)
 }
 
 func (this *NetProcessor) Stop() {
 
-	this._mu_status.Lock()
-	defer this._mu_status.Unlock()
+	this.mu_status.Lock()
+	defer this.mu_status.Unlock()
 
-	if (this._status == NetManagerStatus_Idle) {
+	if (this.status == NetManagerStatus_Idle) {
 		return
 	}
 
-	this._status = NetManagerStatus_Idle
-	this._contextManager.ClearAll()
-	this._status = NetManagerStatus_Idle
+	this.status = NetManagerStatus_Idle
+	this.contextManager.ClearAll()
+	this.status = NetManagerStatus_Idle
 }
 
 func (this *NetProcessor) HandleIncomingConnection(socket *NetWebSocket) {
@@ -116,14 +106,14 @@ func (this *NetProcessor) HandleIncomingConnection(socket *NetWebSocket) {
 
 	log.I("[network] receive new connection:", remoteHost)
 
-	device := this._topology.GetPeerDeviceByIP(remoteHostAddress.IpAddress)
+	device := this.topology.GetPeerDeviceByIP(remoteHostAddress.IpAddress)
 
 	if (device == nil) {
 		log.I("client address is not in white list, ignore it.")
 		return
 	}
 
-	this._contextManager.CreateIncomingContext(socket, device)
+	this.contextManager.CreateIncomingContext(socket, device)
 
 	/*
 	// 订阅消息
@@ -139,9 +129,32 @@ func (this *NetProcessor) HandleIncomingConnection(socket *NetWebSocket) {
 // Deprecated?
 func (this *NetProcessor) HandleMessage(context *NetContext, rawMessage *NetMessage) {
 
-	log.I("[network] receive message. context=[%d]:", context._index)
+	log.I("[network] receive message. context=", context.index)
 
 
+}
+
+func (this *NetProcessor) ConnectToDeviceAsync(device *NetDevice) (resultChan chan bool) {
+
+	log.I("[network] ConnectToDevice. device=", device.GetHostUrl())
+
+	resultChan = make(chan bool)
+
+	go func() {
+		context, err := this.contextManager.GetIncomingContext(device)
+		if err != nil || context == nil {
+			context, err = this.contextManager.CreateOrGetOutgoingContext(device)
+			if err != nil || context == nil {
+				resultChan <- false
+				return
+			}
+		}
+
+
+		resultChan <- true
+	}()
+
+	return resultChan
 }
 
 func (this *NetProcessor) SendEventToDeviceAsync(device *NetDevice, eventData []byte) (resultChan chan *NetEventResult) {
@@ -154,7 +167,7 @@ func (this *NetProcessor) SendEventToDeviceAsync(device *NetDevice, eventData []
 
 		event := ComposeEvent(eventData)
 
-		context, err := this._contextManager.CreateOrGetOutgoingContext(device)
+		context, err := this.contextManager.CreateOrGetOutgoingContext(device)
 		if (err != nil || context == nil) {
 			resultChan <- ComposeEventResult(event, errors.InvalidArgumentError("CreateOrGetOutgoingContext failed."))
 			return
@@ -173,7 +186,7 @@ func (this *NetProcessor) SendEventToDeviceAsync(device *NetDevice, eventData []
 
 func (this *NetProcessor) SendEventToContextAsync(context *NetContext, eventData []byte, result chan *NetEventResult) {
 
-	log.I("[network] send message. context=[%d]:", context._index)
+	log.I("[network] send message. context=[%d]:", context.index)
 
 	go func() {
 

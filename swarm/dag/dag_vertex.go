@@ -63,7 +63,7 @@ func CreateVertex(dagStorage *DagStorage, selfNode *DagNode, peerParent *DagVert
 	vertex.Signature = signature
 
 	// Save to database
-	vertex.SaveToStorage()
+	SaveVertex(dagStorage, vertex)
 
 	// Clear the pending queue data
 	dagStorage.queuePendingData.Clear()
@@ -78,19 +78,4 @@ func GenerateGeneticVertex(node *DagNode) *DagNode {
 	return nil
 }
 
-
-func (this *DagVertex) SaveToStorage() (err error) {
-
-	if this == nil {
-		return
-	}
-
-	dagStorage := DagStorageGetInstance()
-	err = dagStorage.storage.SaveProto("V:" + string(this.Hash), this)
-	if err == nil {
-		log.I("DagVertex saved to storage.")
-	}
-
-	return
-}
 

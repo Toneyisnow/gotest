@@ -6,8 +6,11 @@ import (
 	"../gotest/swarm/storage"
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"github.com/smartswarm/core/crypto/secp256k1"
+	"io/ioutil"
+
 	//"../gotest/swarm/storagetest"
 
 	"encoding/binary"
@@ -19,7 +22,8 @@ import (
 
 func main() {
 
-	crpto_test()
+	// test_args()
+	// generate_signatures()
 
 	// db_test()
 
@@ -33,7 +37,6 @@ func crpto_test() {
 	// sha := sha256.New()
 	hash := sha256.Sum256([]byte("Hello world"))
 	// hashString := base64.URLEncoding.EncodeToString([]byte(hash))
-	log.I("Hash: ", len(hash), hash)
 
 
 	pubKey, privKey := secp256k1.GenerateKeyPair()
@@ -52,6 +55,46 @@ func crpto_test() {
 
 }
 
+func test_args() {
+
+
+	fmt.Println("os.Args len:", len(os.Args))
+
+	fileName := string(os.Args[1])
+	fmt.Println(fileName)
+}
+
+func generate_signatures() {
+
+	jsonFile, err := os.Open("node-topology.json")
+
+	// if we os.Open returns an error then handle it
+	if err != nil {
+		fmt.Println(err)
+	}
+
+	byteValue, _ := ioutil.ReadAll(jsonFile)
+	dagNodes := new(dag.DagNodes)
+	json.Unmarshal(byteValue, dagNodes)
+
+	jsonFile.Close()
+
+
+	pubKey, privKey := secp256k1.GenerateKeyPair()
+
+	dagNodes.Self.Device.PublicKey = pubKey
+	dagNodes.Self.Device.PrivateKey = privKey
+
+	for _, n := range dagNodes.Peers {
+
+		pubKey, privKey = secp256k1.GenerateKeyPair()
+		n.Device.PublicKey = pubKey
+		n.Device.PrivateKey = privKey
+	}
+
+	dagNodes.SaveToFile("node-topology-2.json")
+}
+
 func network_test() {
 
 	topology := network.LoadTopology()
@@ -61,13 +104,11 @@ func network_test() {
 		topology.Self().Port = int32(serverPort)
 	}
 
-
-
 	eventHandler := SampleEventHandler{}
 
 	netProcessor := network.CreateProcessor(topology, eventHandler)
 
-	netProcessor.Start()
+	netProcessor.StartServer()
 
 	time.Sleep(2000)
 
@@ -78,8 +119,7 @@ func network_test() {
 
 		log.I2("SendEvent started: eventData:[%s]", data)
 
-		resultChan := netProcessor.SendEventToDeviceAsync(device, data)
-		result := <- resultChan
+		result := <- netProcessor.SendEventToDeviceAsync(device, data)
 
 		if (result.Err != nil) {
 			log.I2("SendEvent finished. Result: eventId=[%d], err=[%s]", result.EventId, result.Err.Error())
@@ -91,8 +131,16 @@ func network_test() {
 
 func dag_test() {
 
+	if len(os.Args) < 2 {
+		fmt.Println("Missing config file in command. Usage: [_exe_] <ConfigFile.json>")
+		return
+	}
+
+	configFileName := string(os.Args[1])
+	config := dag.LoadConfigFromJsonFile(configFileName)
+
 	handler := SamplePayloadHandler{}
-	engine := dag.ComposeDagEngine(&handler)
+	engine := dag.NewDagEngine(config, &handler)
 
 	engine.Start()
 

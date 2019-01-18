@@ -11,22 +11,22 @@ import (
 
 type NetContextManager struct {
 
-	_processor *NetProcessor
-	_option *NetOption
+	netProcessor *NetProcessor
+	netOption    *NetOption
 
-	_incomingContexts map[string]*NetContext
-	_outgoingContexts map[string]*NetContext
+	incomingContexts map[string]*NetContext
+	outgoingContexts map[string]*NetContext
 
-	_addremove_mutex sync.RWMutex
+	addremoveMutex sync.RWMutex
 
-	_seed int32 // 用于连接标号的种子
+	seed int32 // 用于连接标号的种子
 }
 
-func CreateContextManager(processor *NetProcessor) *NetContextManager {
+func NewContextManager(processor *NetProcessor) *NetContextManager {
 
 	contextManager := new(NetContextManager)
-	contextManager._processor = processor
-	contextManager._option = processor.GetOption()
+	contextManager.netProcessor = processor
+	contextManager.netOption = processor.GetOption()
 	contextManager.Initialize()
 
 	return contextManager
@@ -34,8 +34,9 @@ func CreateContextManager(processor *NetProcessor) *NetContextManager {
 
 func (this *NetContextManager) Initialize() {
 
-	this._incomingContexts = make(map[string]*NetContext)
-	this._outgoingContexts = make(map[string]*NetContext)
+	this.addremoveMutex = sync.RWMutex{}
+	this.incomingContexts = make(map[string]*NetContext)
+	this.outgoingContexts = make(map[string]*NetContext)
 }
 
 func (this *NetContextManager) CreateIncomingContext(socket *NetWebSocket, device *NetDevice) (context *NetContext, err error) {
@@ -54,7 +55,7 @@ func (this *NetContextManager) CreateIncomingContext(socket *NetWebSocket, devic
 	context.Open()
 
 	// challenge
-	if (this._option._needChallenge) {
+	if (this.netOption._needChallenge) {
 		log.I("[network] require challenge...")
 		var challenge string = base64.StdEncoding.EncodeToString(base.RandomBytes(30))
 		context.SetMetadata("challenge", challenge)
@@ -72,22 +73,24 @@ func (this *NetContextManager) CreateOrGetOutgoingContext(device *NetDevice) (co
 	if device == nil {
 		context = nil
 		err = errors.InvalidArgumentError("device is null")
-		return
+		return nil, nil
 	}
 
 	hostUrl := device.GetHostUrl()
-	context, exist := this._outgoingContexts[hostUrl]
+	context, exist := this.outgoingContexts[hostUrl]
 	if exist {
-		return
+		return context, nil
 	}
 
 	log.I("[network] start creating connection to: ", device.GetHostUrl())
 
 	socket, err := StartWebSocketDial(device)
+	if err != nil || socket == nil {
+		return nil, nil
+	}
 
 	context = CreateOutgoingContext(socket, device)
 	this.Add(context)
-
 
 	// 开始心跳
 	context.Open()
@@ -118,6 +121,23 @@ func (this *NetContextManager) CreateOrGetOutgoingContext(device *NetDevice) (co
 
 }
 
+func (this *NetContextManager) GetIncomingContext(device *NetDevice) (context *NetContext, err error) {
+
+	if device == nil {
+		context = nil
+		err = errors.InvalidArgumentError("device is null")
+		return nil, nil
+	}
+
+	hostUrl := device.GetHostUrl()
+	context, exist := this.incomingContexts[hostUrl]
+	if exist {
+		return context, nil
+	}
+
+	return nil, nil
+}
+
 // 添加连接
 func (this *NetContextManager) Add(context *NetContext) {
 
@@ -126,12 +146,12 @@ func (this *NetContextManager) Add(context *NetContext) {
 	}
 
 	hostAddress := context.GetAddress()
-	this._addremove_mutex.Lock()
-	defer this._addremove_mutex.Unlock()
+	this.addremoveMutex.Lock()
+	defer this.addremoveMutex.Unlock()
 
-	contextList := this._incomingContexts
-	if context._direction == NetConextDirection_Outgoing {
-		contextList = this._outgoingContexts
+	contextList := this.incomingContexts
+	if context.direction == NetConextDirection_Outgoing {
+		contextList = this.outgoingContexts
 	}
 
 	_, exist := contextList[hostAddress]
@@ -141,8 +161,8 @@ func (this *NetContextManager) Add(context *NetContext) {
 	}
 
 	contextList[hostAddress] = context
-	context._manager = this
-	context._index = atomic.AddInt32(&this._seed, 1)
+	context.contextManager = this
+	context.index = atomic.AddInt32(&this.seed, 1)
 }
 
 // 移除连接
@@ -153,28 +173,27 @@ func (this *NetContextManager) Remove(context *NetContext) {
 	}
 
 	hostAddress := context.GetAddress()
-	this._addremove_mutex.Lock()
-	defer this._addremove_mutex.Unlock()
+	this.addremoveMutex.Lock()
+	defer this.addremoveMutex.Unlock()
 
-	if context._direction == NetConextDirection_Incoming {
-		delete(this._incomingContexts, hostAddress)
+	if context.direction == NetConextDirection_Incoming {
+		delete(this.incomingContexts, hostAddress)
 	}
-	if context._direction == NetConextDirection_Outgoing {
-		delete(this._outgoingContexts, hostAddress)
+	if context.direction == NetConextDirection_Outgoing {
+		delete(this.outgoingContexts, hostAddress)
 	}
 
-	context._manager = nil
-	// Debug("[netowrk] connection removed.", mgr)
+	context.contextManager = nil
+	log.I("[network] connection removed. context index=", context.index)
 }
-
 
 // 通过url获取连出连接
 func (this *NetContextManager) FindOutgoingByUrl(hostUrl string) (context *NetContext, exist bool) {
 
-	this._addremove_mutex.Lock()
-	defer this._addremove_mutex.Unlock()
+	this.addremoveMutex.Lock()
+	defer this.addremoveMutex.Unlock()
 
-	for _, v := range this._outgoingContexts {
+	for _, v := range this.outgoingContexts {
 
 		if v.GetAddress() == hostUrl {
 			context = v

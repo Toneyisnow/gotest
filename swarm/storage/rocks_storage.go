@@ -70,9 +70,9 @@ func GetRocksDBInstance(a app.AppDelegate) (rocksStorage *RocksStorage) {
 }
 
 //GetRocksDBInstance singleton
-func ComposeRocksDBInstance(databaseName string) (rocksStorage *RocksStorage) {
+func ComposeRocksDBInstance(databaseFullPath string) (rocksStorage *RocksStorage) {
 	var err error
-	if rocksStorage, err = newRocksTransactionStorage("/Users/suiyi/AppData/rocksdb/" + databaseName); err != nil {
+	if rocksStorage, err = newRocksTransactionStorage(databaseFullPath); err != nil {
 		log.E("[db] init storage failed!", err)
 	}
 	return

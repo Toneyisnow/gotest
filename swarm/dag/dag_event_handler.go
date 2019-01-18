@@ -14,17 +14,17 @@ const (
 
 type DagEventHandler struct {
 
-	_engine *DagEngine
-	_eventQueue chan *DagEvent
-	_eventWorkers []*DagEventWorker
+	dagEngine    *DagEngine
+	eventQueue   chan *DagEvent
+	eventWorkers []*DagEventWorker
 }
 
 func NewDagEventHandler(engine *DagEngine) DagEventHandler {
 
 	handler := DagEventHandler{}
-	handler._eventQueue = make(chan *DagEvent, DAG_EVENT_QUEUE_MAX_LENGTH)
-	handler._engine = engine
-	handler._eventWorkers = make([]*DagEventWorker, 0)
+	handler.eventQueue = make(chan *DagEvent, DAG_EVENT_QUEUE_MAX_LENGTH)
+	handler.dagEngine = engine
+	handler.eventWorkers = make([]*DagEventWorker, 0)
 
 	return handler
 }
@@ -32,6 +32,10 @@ func NewDagEventHandler(engine *DagEngine) DagEventHandler {
 func (this DagEventHandler) HandleEventData(context *network.NetContext, rawData []byte) (err error) {
 
 	log.I("HandleEventData Start.")
+
+	if this.dagEngine.EngineStatus != DagEngineStatus_Connected {
+		log.W("[dag] DagEngine is not in connected status, ignore this incoming event.")
+	}
 
 	dagEvent := new(DagEvent)
 	ierr := proto.Unmarshal(rawData, dagEvent)
@@ -42,7 +46,7 @@ func (this DagEventHandler) HandleEventData(context *network.NetContext, rawData
 
 	// Put the data into queue, if the queue is reached max length, do something error
 	isAllWorkersBusy := true
-	for _, worker := range this._eventWorkers {
+	for _, worker := range this.eventWorkers {
 		if !worker.IsBusy() {
 			isAllWorkersBusy = false
 			break
@@ -50,15 +54,15 @@ func (this DagEventHandler) HandleEventData(context *network.NetContext, rawData
 	}
 
 	// Create new worker if needed
-	if isAllWorkersBusy && len(this._eventWorkers) < DAG_EVENT_HANDLER_WORKER_COUNT {
+	if isAllWorkersBusy && len(this.eventWorkers) < DAG_EVENT_HANDLER_WORKER_COUNT {
 
-		worker := ComposeDagEventWorker(this._eventQueue, this._engine)
-		this._eventWorkers = append(this._eventWorkers, worker)
+		worker := ComposeDagEventWorker(this.eventQueue, this.dagEngine)
+		this.eventWorkers = append(this.eventWorkers, worker)
 		go worker.Start()
 	}
 
-	if len(this._eventQueue) < DAG_EVENT_QUEUE_MAX_LENGTH {
-		this._eventQueue <- dagEvent
+	if len(this.eventQueue) < DAG_EVENT_QUEUE_MAX_LENGTH {
+		this.eventQueue <- dagEvent
 	} else {
 
 		// Report error here
@@ -70,7 +74,7 @@ func (this DagEventHandler) HandleEventData(context *network.NetContext, rawData
 
 func (this *DagEventHandler) StopAllWorkers() {
 
-	for _, worker := range this._eventWorkers {
+	for _, worker := range this.eventWorkers {
 
 		worker.Stop()
 	}
