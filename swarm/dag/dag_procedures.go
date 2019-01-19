@@ -6,6 +6,7 @@ import (
 	"github.com/golang/protobuf/proto"
 	"github.com/smartswarm/go/log"
 	"math/rand"
+	"time"
 )
 
 type ProcessResult int
@@ -42,7 +43,7 @@ func SelectPeerNodeToSendVertex(dagStorage *DagStorage, vertex *DagVertex, dagNo
 	nodeNeeded := 0
 	if vertex.GetContent().PeerParentHash != nil {
 		// If this vertex is created from peer triggering, just send to 0-1 other nodes
-		if rand.Intn(100) < 50 {
+		if rand.Intn(100) < 10 {
 			nodeNeeded = 1
 		}
 	} else {
@@ -55,8 +56,22 @@ func SelectPeerNodeToSendVertex(dagStorage *DagStorage, vertex *DagVertex, dagNo
 			break
 		}
 
-		results = append(results, peerNode)
-		nodeNeeded --
+		key := storage.ConvertUint64ToBytes(peerNode.NodeId)
+		lastTimeBytes := dagStorage.tableNodeSyncTimestamp.Get(key)
+
+		var lastTime time.Time
+		if lastTimeBytes != nil {
+
+			err := lastTime.UnmarshalBinary(lastTimeBytes)
+			if err == nil && lastTime.Before(time.Now()) {
+
+				results = append(results, peerNode)
+				nodeNeeded --
+
+				b, _ := time.Now().MarshalBinary()
+				dagStorage.tableNodeSyncTimestamp.InsertOrUpdate(key, b)
+			}
+		}
 	}
 
 	return results

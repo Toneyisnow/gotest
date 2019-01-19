@@ -34,6 +34,8 @@ type DagStorage struct {
 	tableVertexConnection *storage.RocksTable
 	tableCandidateDecision *storage.RocksTable
 
+	tableNodeSyncTimestamp *storage.RocksTable
+
 	// All queues defined
 	queuePendingData            *storage.RocksSequenceQueue
 
@@ -83,7 +85,7 @@ func NewDagStorage(storageLocation string) *DagStorage {
 	dagStorage.tableVertex = storage.NewRocksTable(dagStorage.storage, "V")
 
 	// Candidate Table: key:[nodeId+level] value:[vertex_hash]
-	dagStorage.tableCandidate = storage.NewRocksTable(dagStorage.storage, "C")
+	dagStorage.tableCandidate = storage.NewRocksTable(dagStorage.storage, "VC")
 
 	// Last Vertex Table: key:[nodeId] value:[vertex_hash]
 	dagStorage.tableNodeLatestVertex = storage.NewRocksTable(dagStorage.storage, "NV")
@@ -102,6 +104,9 @@ func NewDagStorage(storageLocation string) *DagStorage {
 
 	// Candidate Decision Table: key:[vertex_hash+vertex_hash] value:[Yes, No, DecideYes, DecideNo]
 	dagStorage.tableCandidateDecision = storage.NewRocksTable(dagStorage.storage, "CV")
+
+	// The last synced timestamp for a given node
+	dagStorage.tableNodeSyncTimestamp = storage.NewRocksTable(dagStorage.storage, "NT")
 
 
 	// ------ Initialize the queue data ------
