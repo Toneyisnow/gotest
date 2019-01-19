@@ -2,14 +2,12 @@ package dag
 
 import (
 	"../storage"
-	"errors"
-	"github.com/smartswarm/go/log"
-	"strconv"
+	"github.com/gogo/protobuf/proto"
 	"sync"
 )
 
 const (
-	PendingPayloadBufferSize = 10
+	PendingPayloadBufferSize = 3
 
 	IncomingVertexChannelCapacity = 10000
 	SettledVertexChannelCapacity = 100
@@ -29,6 +27,7 @@ type DagStorage struct {
 	tableVertex *storage.RocksTable
 	tableCandidate *storage.RocksTable
 	tableNodeLatestVertex *storage.RocksTable
+	tableGenesisVertex *storage.RocksTable
 
 	tableVertexLink *storage.RocksTable
 	tableVertexStatus *storage.RocksTable
@@ -55,7 +54,6 @@ type DagStorage struct {
 	queueCandidate *storage.RocksSequenceQueue
 	queueQueen *storage.RocksSequenceQueue
 	*/
-
 }
 
 var dagStorage *DagStorage
@@ -64,7 +62,7 @@ var dagStorageMutex sync.Mutex
 func DagStorageGetInstance(storageLocation string) *DagStorage{
 
 	dagStorageMutex.Lock()
-	if (dagStorage == nil) {
+	if dagStorage == nil {
 		dagStorage = NewDagStorage(storageLocation)
 	}
 	dagStorageMutex.Unlock()
@@ -89,6 +87,9 @@ func NewDagStorage(storageLocation string) *DagStorage {
 
 	// Last Vertex Table: key:[nodeId] value:[vertex_hash]
 	dagStorage.tableNodeLatestVertex = storage.NewRocksTable(dagStorage.storage, "NV")
+
+	// Genesis Vertex Table: key:[nodeId] value:[vertex_hash]
+	dagStorage.tableGenesisVertex = storage.NewRocksTable(dagStorage.storage, "GV")
 
 	// Vertex Parent Table: key:[vertex_hash] value:[self_parent_hash+peer_parent_hash]
 	dagStorage.tableVertexLink = storage.NewRocksTable(dagStorage.storage, "VD")
@@ -128,36 +129,189 @@ func NewDagStorage(storageLocation string) *DagStorage {
 	return dagStorage
 }
 
-func (this *DagStorage) GetLastVertexOnNode(node *DagNode, hashOnly bool) (hash []byte, vertex *DagVertex, err error) {
 
-	if (node == nil) {
-		log.W("GetLastVertexOnNode failed: node is nil.")
-		return nil, nil, errors.New("GetLastVertexOnNode failed: node is nil.")
+func GetVertex(dagStorage *DagStorage, vertexHash []byte) *DagVertex {
+
+	vertexByte := dagStorage.tableVertex.Get(vertexHash)
+	if vertexByte == nil {
+		return nil
 	}
 
-	vertexHash, err := this.storage.Get([]byte("L:" + strconv.FormatUint(node.NodeId, 16)))
-
+	vertex := &DagVertex{}
+	err := proto.Unmarshal(vertexByte, vertex)
 	if err != nil {
-		log.W("Got error while GetLastVertexOnNode: " + err.Error())
-		return nil, nil, err
+		return nil
 	}
 
-	if vertexHash == nil {
-		log.W("Cannot find vertex hash in GetLastVertexOnNode.")
-		return nil, nil, errors.New("Cannot find vertex hash in GetLastVertexOnNode.")
+	return vertex
+}
+
+func SaveVertex(dagStorage *DagStorage, vertex *DagVertex) (err error) {
+
+	vertexBytes, err := proto.Marshal(vertex)
+	if err != nil {
+		return err
+	}
+
+	err = dagStorage.tableVertex.InsertOrUpdate(vertex.GetHash(), vertexBytes)
+	return err
+}
+
+func GetVertexStatus(dagStorage *DagStorage, vertexHash []byte) *DagVertexStatus {
+
+	statusByte := dagStorage.tableVertexStatus.Get(vertexHash)
+	if statusByte == nil {
+		return nil
+	}
+
+	status := &DagVertexStatus{}
+	err := proto.Unmarshal(statusByte, status)
+	if err != nil {
+		return nil
+	}
+
+	return status
+}
+
+func SetVertexStatus(dagStorage *DagStorage, vertexHash []byte, status *DagVertexStatus) {
+
+	statusByte, _ := proto.Marshal(status)
+	err := dagStorage.tableVertexStatus.InsertOrUpdate(vertexHash, statusByte)
+	if err != nil {
+
+	}
+}
+
+func SetLatestNodeVertex(dagStorage *DagStorage, nodeId uint64, vertexHash []byte) {
+
+	key := storage.ConvertUint64ToBytes(nodeId)
+	err := dagStorage.tableNodeLatestVertex.InsertOrUpdate(key, vertexHash)
+	if err != nil {
+
+	}
+}
+
+func GetLatestNodeVertex(dagStorage *DagStorage, nodeId uint64, hashOnly bool) (hash []byte, vertex *DagVertex) {
+
+	key := storage.ConvertUint64ToBytes(nodeId)
+	resultByte := dagStorage.tableNodeLatestVertex.Get(key)
+	if resultByte == nil {
+		return nil, nil
 	}
 
 	if hashOnly {
-		return vertexHash, nil, nil
+		return resultByte, nil
 	}
 
-	vertex = new(DagVertex)
-	this.storage.LoadProto("V:" + string(vertexHash), vertex)
-	if vertex == nil {
-		log.W("Cannot find vertex in GetLastVertexOnNode.")
-		return nil, nil, errors.New("Cannot find vertex in GetLastVertexOnNode.")
+	vertexByte := dagStorage.tableVertex.Get(resultByte)
+
+	result := &DagVertex{}
+	err := proto.Unmarshal(vertexByte, result)
+	if err != nil {
+		return nil, nil
 	}
 
-	return vertexHash, vertex, nil
+	return resultByte, result
 }
 
+func GetVertexLink(dagStorage *DagStorage, vertexHash []byte) *DagVertexLink {
+
+	linkByte := dagStorage.tableVertexStatus.Get(vertexHash)
+	if linkByte == nil {
+		return nil
+	}
+
+	link := &DagVertexLink{}
+	err := proto.Unmarshal(linkByte, link)
+	if err != nil {
+		return nil
+	}
+
+	return link
+}
+
+func GetCandidateForNode(dagStorage *DagStorage, nodeId uint64, level uint32, hashOnly bool) (hash []byte, vertex *DagVertex) {
+
+	key := append(storage.ConvertUint64ToBytes(nodeId), storage.ConvertUint32ToBytes(level)...)
+	resultByte := dagStorage.tableVertexStatus.Get(key)
+	if resultByte == nil {
+		return nil, nil
+	}
+
+	if hashOnly {
+		return resultByte, nil
+	}
+
+	vertexByte := dagStorage.tableVertex.Get(resultByte)
+
+	result := &DagVertex{}
+	err := proto.Unmarshal(vertexByte, result)
+	if err != nil {
+		return nil, nil
+	}
+
+	return resultByte, result
+}
+
+
+func GetGenesisVertex(dagStorage *DagStorage, nodeId uint64, hashOnly bool) (hash []byte, vertex *DagVertex) {
+
+	key := storage.ConvertUint64ToBytes(nodeId)
+	resultByte := dagStorage.tableGenesisVertex.Get(key)
+	if resultByte == nil {
+		return nil, nil
+	}
+
+	if hashOnly {
+		return resultByte, nil
+	}
+
+	vertexByte := dagStorage.tableVertex.Get(resultByte)
+
+	result := &DagVertex{}
+	err := proto.Unmarshal(vertexByte, result)
+	if err != nil {
+		return nil, nil
+	}
+
+	return resultByte, result
+}
+
+func GetVertexConnection(dagStorage *DagStorage, vertexHash []byte, targetVertexHash []byte) *DagVertexConnection {
+
+	key := append(vertexHash, targetVertexHash...)
+	resultByte := dagStorage.tableVertexStatus.Get(key)
+	if resultByte == nil {
+		return nil
+	}
+
+	result := &DagVertexConnection{}
+	err := proto.Unmarshal(resultByte, result)
+	if err != nil {
+		return nil
+	}
+
+	return result
+}
+
+
+func GetCandidateDecision(dagStorage *DagStorage, vertexHash []byte, targetVertexHash []byte) CandidateDecision {
+
+	key := append(vertexHash, targetVertexHash...)
+	resultByte := dagStorage.tableCandidateDecision.Get(key)
+	if resultByte == nil {
+		return CandidateDecision_Unknown
+	}
+
+	result := storage.ConvertBytesToUint32(resultByte)
+	return CandidateDecision(result)
+}
+
+
+func SetCandidateDecision(dagStorage *DagStorage, vertexHash []byte, targetVertexHash []byte, decision CandidateDecision) {
+
+	key := append(vertexHash, targetVertexHash...)
+	value := storage.ConvertUint32ToBytes(uint32(decision))
+
+	dagStorage.tableCandidateDecision.InsertOrUpdate(key, value)
+}

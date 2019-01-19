@@ -41,7 +41,7 @@ func (this *NetContextManager) Initialize() {
 
 func (this *NetContextManager) CreateIncomingContext(socket *NetWebSocket, device *NetDevice) (context *NetContext, err error) {
 
-	context = CreateIncomingContext(socket, device)
+	context = NewIncomingContext(socket, device)
 	if context == nil {
 		err = errors.InvalidArgumentError("Create context failed.")
 		return
@@ -60,7 +60,7 @@ func (this *NetContextManager) CreateIncomingContext(socket *NetWebSocket, devic
 		var challenge string = base64.StdEncoding.EncodeToString(base.RandomBytes(30))
 		context.SetMetadata("challenge", challenge)
 
-		message := ComposeChallengeMessage("", "ran_chars_here")
+		message := ComposeChallengeMessage("", challenge)
 		context.SendMessage(message)
 	}
 
@@ -84,12 +84,13 @@ func (this *NetContextManager) CreateOrGetOutgoingContext(device *NetDevice) (co
 
 	log.I("[network] start creating connection to: ", device.GetHostUrl())
 
-	socket, err := StartWebSocketDial(device)
+	clientServerHostUrl := this.netProcessor.topology.Self().GetHostUrl()
+	socket, err := StartWebSocketDial(device, clientServerHostUrl)
 	if err != nil || socket == nil {
 		return nil, nil
 	}
 
-	context = CreateOutgoingContext(socket, device)
+	context = NewOutgoingContext(socket, device)
 	this.Add(context)
 
 	// 开始心跳
@@ -125,7 +126,7 @@ func (this *NetContextManager) GetIncomingContext(device *NetDevice) (context *N
 
 	if device == nil {
 		context = nil
-		err = errors.InvalidArgumentError("device is null")
+		err = errors.InvalidArgumentError("[network] device is null")
 		return nil, nil
 	}
 

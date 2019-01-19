@@ -7,22 +7,53 @@ import (
 	"github.com/golang/protobuf/ptypes"
 	"github.com/smartswarm/core/crypto/secp256k1"
 	"github.com/smartswarm/go/log"
+	"math/rand"
+	"strconv"
 	"sync"
 	"time"
 )
 
-var _createVertexMutex sync.Mutex
+var createVertexMutex sync.Mutex
 
-func CreateVertex(dagStorage *DagStorage, selfNode *DagNode, peerParent *DagVertex) (vertex *DagVertex, err error) {
 
-	if selfNode == nil {
-		log.W("CreateVertex: selfNode is nil.")
-		return nil, errors.New("CreateVertex: selfNode is nil.")
+func CreateSelfDataVertex(dagStorge *DagStorage, selfNode *DagNode, data PayloadData) (vertex *DagVertex, err error) {
+
+	createVertexMutex.Lock()
+	defer createVertexMutex.Unlock()
+
+	err = dagStorage.queuePendingData.Push(data)
+	if err != nil {
+		return nil, err
 	}
 
-	_createVertexMutex.Lock()
-	defer _createVertexMutex.Unlock()
+	createdVertex := (*DagVertex)(nil)
+	if dagStorage.queuePendingData.IsFull() {
 
+		// ComposePayloadVertex(nil)
+		createdVertex, err = createVertex(dagStorage, selfNode, nil)
+	}
+
+	return createdVertex, err
+}
+
+func CreateTwoParentsVertex(dagStorage *DagStorage, selfNode *DagNode, peerParent *DagVertex) (vertex *DagVertex, err error) {
+
+	createVertexMutex.Lock()
+	defer createVertexMutex.Unlock()
+
+	createdVertex, err := createVertex(dagStorage, selfNode, nil)
+
+	return createdVertex, err
+}
+
+func createVertex(dagStorage *DagStorage, selfNode *DagNode, peerParent *DagVertex) (vertex *DagVertex, err error) {
+
+	if selfNode == nil {
+		log.W("[dag] createVertex: selfNode is nil.")
+		return nil, errors.New("[dag] createVertex: selfNode is nil")
+	}
+
+	log.I("[dag] start to create new vertex")
 	vertex = new(DagVertex)
 
 	vertex.CreatorNodeId = selfNode.NodeId
@@ -30,7 +61,7 @@ func CreateVertex(dagStorage *DagStorage, selfNode *DagNode, peerParent *DagVert
 	content.TimeStamp, _ = ptypes.TimestampProto(time.Now())
 
 	// Mutex to read from storage
-	lastSelfVertexHash, _, _ := dagStorage.GetLastVertexOnNode(selfNode, true)
+	lastSelfVertexHash, _ := GetLatestNodeVertex(dagStorage, selfNode.NodeId, true)
 	content.SelfParentHash = lastSelfVertexHash
 
 	if peerParent != nil {
@@ -52,7 +83,7 @@ func CreateVertex(dagStorage *DagStorage, selfNode *DagNode, peerParent *DagVert
 	// Calculate Hash and Encrypt it
 	contentBytes, err := proto.Marshal(content)
 	if err != nil {
-		return nil, errors.New("Fatal: proto Marshal content failed.")
+		return nil, errors.New("fatal: proto Marshal content failed")
 	}
 
 	sha256Hash := sha256.Sum256(contentBytes)
@@ -72,10 +103,41 @@ func CreateVertex(dagStorage *DagStorage, selfNode *DagNode, peerParent *DagVert
 	return
 }
 
-func GenerateGeneticVertex(node *DagNode) *DagNode {
+func CreateGenesisVertex(dagStorage *DagStorage, selfNode *DagNode) (vertex *DagVertex, err error) {
 
+	createVertexMutex.Lock()
+	defer createVertexMutex.Unlock()
 
-	return nil
+	log.I("[dag] start to create genesis vertex")
+	vertex = new(DagVertex)
+
+	vertex.CreatorNodeId = selfNode.NodeId
+	content := new(DagVertexContent)
+	content.TimeStamp, _ = ptypes.TimestampProto(time.Now())
+	content.Salt = strconv.Itoa(rand.Intn(1000))
+
+	// Mutex to read from storage
+	content.SelfParentHash = nil
+	content.PeerParentHash = nil
+
+	// Calculate Hash and Encrypt it
+	contentBytes, err := proto.Marshal(content)
+	if err != nil {
+		return nil, errors.New("fatal: proto Marshal content failed")
+	}
+
+	sha256Hash := sha256.Sum256(contentBytes)
+	vertex.Hash = sha256Hash[:]
+
+	privateKey := selfNode.Device.PrivateKey
+	signature, err := secp256k1.Sign(vertex.Hash, privateKey)
+	vertex.Signature = signature
+
+	// Save to database
+	err = SaveVertex(dagStorage, vertex)
+
+	err = nil
+	return
 }
 
 

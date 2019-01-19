@@ -28,9 +28,9 @@ type NetContext struct {
 	metadata       map[string]string
 }
 
-func CreateIncomingContext(socket *NetWebSocket, device *NetDevice) *NetContext {
+func NewIncomingContext(socket *NetWebSocket, device *NetDevice) *NetContext {
 
-	log.I("[net] CreateIncomingContext for device=", device.Id)
+	log.I("[net] new incomingContext for device=", device.Id)
 	context := new(NetContext)
 
 	context.webSocket = socket
@@ -41,7 +41,7 @@ func CreateIncomingContext(socket *NetWebSocket, device *NetDevice) *NetContext 
 	return context
 }
 
-func CreateOutgoingContext(socket *NetWebSocket, device *NetDevice) *NetContext {
+func NewOutgoingContext(socket *NetWebSocket, device *NetDevice) *NetContext {
 
 	context := new(NetContext)
 

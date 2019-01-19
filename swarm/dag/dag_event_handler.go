@@ -56,7 +56,7 @@ func (this DagEventHandler) HandleEventData(context *network.NetContext, rawData
 	// Create new worker if needed
 	if isAllWorkersBusy && len(this.eventWorkers) < DAG_EVENT_HANDLER_WORKER_COUNT {
 
-		worker := ComposeDagEventWorker(this.eventQueue, this.dagEngine)
+		worker := NewDagEventWorker(this.eventQueue, this.dagEngine)
 		this.eventWorkers = append(this.eventWorkers, worker)
 		go worker.Start()
 	}

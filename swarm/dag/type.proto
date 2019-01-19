@@ -68,6 +68,9 @@ message DagVertexContent {
 
     // The data it carries
     repeated bytes data = 7;
+
+    // Some random salts to make sure the hash is not identical
+    string salt = 8;
 }
 
 message RequestCatchUpEvent {
@@ -81,7 +84,8 @@ message GetVertexEvent {
 
 message VertexesDataEvent {
 
-    repeated DagVertex vertexes = 1;
+    DagVertex main_vertex = 1;
+    repeated DagVertex vertexes = 2;
 }
 
 message GetTopologyEvent {
@@ -107,4 +111,5 @@ message RequestInfoEvent {
 
 message InfoEvent {
 
+    bytes genesis_vertex_hash = 1;
 }

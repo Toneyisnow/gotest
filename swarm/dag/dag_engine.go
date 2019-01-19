@@ -85,13 +85,15 @@ func (this *DagEngine) Initialize() {
 
 func (this *DagEngine) Start() {
 
-	log.I("[dag] Begin DagEngine.Start()")
+	log.I("[dag] begin DagEngine.Start")
+
+	EnsureGenesisVertex(this.dagStorage, this.dagNodes.GetSelf())
 
 	this.netProcessor.StartServer()
 	this.EngineStatus = DagEngineStatus_Started
 
 	for {
-		this.RefreshConenction()
+		this.RefreshConnection()
 		if this.EngineStatus == DagEngineStatus_Connected {
 			break
 		}
@@ -106,19 +108,19 @@ func (this *DagEngine) Start() {
 	// Keep making sure of the connection
 	go func() {
 		for {
-			this.RefreshConenction()
+			this.RefreshConnection()
 			time.Sleep(3 * time.Second)
 		}
 	}()
 
-	log.I("[dag] End DagEngine.Start()")
+	log.I("[dag] end DagEngine.Start")
 }
 
 func (this *DagEngine) Stop() {
 
 }
 
-func (this *DagEngine) RefreshConenction() {
+func (this *DagEngine) RefreshConnection() {
 
 	//log.I("[dag] Refreshing connection...")
 
@@ -133,17 +135,16 @@ func (this *DagEngine) RefreshConenction() {
 			//log.I("[dag] Trying to connect to device", device.Id, " ...")
 			result := <-this.netProcessor.ConnectToDeviceAsync(&device)
 			if result {
-				log.I("Connecting to device ", device.Id, " succeed.")
+				// log.I("Connecting to device ", device.Id, " succeed.")
 				resultChans <- true
 				return
 			} else {
-				log.W("Connecting to device ", device.Id, " failed.")
+				// log.W("Connecting to device ", device.Id, " failed.")
 				resultChans <- false
 			}
 		}(*node.Device, resultChans)
 	}
 
-	log.I("[dag] Waiting for majority of nodes connected...")
 	expectedConnectionCount := this.dagNodes.GetMajorityCount()
 	for {
 		result :=<-resultChans
@@ -153,14 +154,20 @@ func (this *DagEngine) RefreshConenction() {
 			successConnectionCount ++
 		}
 
-		log.I("[dag] Connection received. Count=", successConnectionCount, "Expected=", expectedConnectionCount)
 		if successConnectionCount >= expectedConnectionCount {
+
+			if this.EngineStatus != DagEngineStatus_Connected {
+				log.I("[dag] engine connected to dag. ConnectionCount=", successConnectionCount, "Expected=", expectedConnectionCount)
+			}
 			this.EngineStatus = DagEngineStatus_Connected
 			break
 		}
 
 		if totalCount >= len(this.dagNodes.Peers) {
 			// All Peers returned, but not enough success connection
+			if this.EngineStatus == DagEngineStatus_Connected {
+				log.I("[dag] engine disconnected from dag, connection is not enough. ConnectionCount=", successConnectionCount, "Expected=", expectedConnectionCount)
+			}
 			this.EngineStatus = DagEngineStatus_Started
 			break
 		}
@@ -170,84 +177,100 @@ func (this *DagEngine) RefreshConenction() {
 //
 func (this *DagEngine) SubmitPayload(data PayloadData) (err error) {
 
-	log.I("[dag] Begin SubmitPayload.")
+	log.I("[dag] begin submit payload.")
 
 	if this.EngineStatus != DagEngineStatus_Connected {
-		log.W("[dag] Cannot submit payload since the dagEngine is not connected to dag.")
+		log.W("[dag] cannot submit payload since the dagEngine is not connected to dag.")
 		return errors.New("cannot submit payload since dagEngine is not connected to dag")
 	}
 
-	err = this.dagStorage.queuePendingData.Push(data)
-	if err != nil {
-		return err
+	createdVertex, err := CreateSelfDataVertex(dagStorage, this.dagNodes.GetSelf(), data)
+	if createdVertex != nil {
+
+		// Handle the event
+		if this.payloadHandler != nil {
+			for _, payloadData := range createdVertex.GetContent().Data {
+				this.payloadHandler.OnPayloadSubmitted(payloadData)
+			}
+		}
+
+		this.composeVertexEvent(createdVertex)
 	}
 
-	if this.dagStorage.queuePendingData.IsFull() {
-
-		// ComposePayloadVertex(nil)
-		this.composeVertexEvent()
-	}
-
-	log.I("[dag] End SubmitPayload.")
+	log.I("[dag] end submit payload.")
 	return nil
 }
 
-func (this *DagEngine) composeVertexEvent() {
+func (this *DagEngine) composeVertexEvent(mainVertex *DagVertex) {
 
-	log.I("[dag] Begin ComposeVertexEvent.")
+	log.I("[dag] begin compose vertex event.")
 
-	// Compose the Vertex Data
-	vertex, _ := CreateVertex(this.dagStorage, this.dagNodes.GetSelf(), nil)
-
-	if (vertex == nil) {
-		log.W("Something wrong while generating new vertex, stopping composing.")
+	if mainVertex == nil {
+		log.W("[dag] mainVertex is nil, cannot compose vertex event.")
 		return
 	}
 
-	// Handle the event
-	if this.payloadHandler != nil {
-		for _, payloadData := range vertex.GetContent().Data {
-			this.payloadHandler.OnPayloadSubmitted(payloadData)
-		}
-	}
-
 	// Send the Vertex to 0-2 nodes
-	peerNodes := SelectPeerNodeToSendVertex(this.dagStorage, this.dagNodes)
+	peerNodes := SelectPeerNodeToSendVertex(this.dagStorage, mainVertex, this.dagNodes)
 	if peerNodes != nil && len(peerNodes) != 0 {
 
 		for _, peerNode := range peerNodes {
 
 			// Compose Vertex event and send
-			vertexList, _ := FindPossibleUnknownVertexesForNode(this.dagStorage, peerNode)
-			event, _ := ComposeVertexEvent(101, vertexList)
+			relatedVertexes, _ := FindPossibleUnknownVertexesForNode(this.dagStorage, peerNode)
+			event, _ := NewVertexEvent(mainVertex, relatedVertexes)
 			data, _ := proto.Marshal(event)
 
 			resultChan := this.netProcessor.SendEventToDeviceAsync(peerNode.Device, data)
 			result := <-resultChan
 
 			if (result.Err != nil) {
-				log.I2("SendEvent finished. Result: eventId=[%d], err=[%s]", result.EventId, result.Err.Error())
+				log.I2("[dag] send event finished. result: eventId=[%d], err=[%s]", result.EventId, result.Err.Error())
 			} else {
-				log.I2("SendEvent succeeeded. Result: eventId=[%d]", result.EventId)
+				log.I2("[dag] send event succeeded. result: eventId=[%d]", result.EventId)
 			}
 		}
 	}
 
-	log.I("[dag] End ComposeVertexEvent.")
+	log.I("[dag] end composeVertexEvent.")
 }
 
-// Threads from Workers: push the incoming vertexes into channel
-func (this *DagEngine) PushIncomingVertex(vertex *DagVertex) {
+// Threads from Workers: create vertex with this as peer parent if possible
+func (this *DagEngine) PushIncomingMainVertex(vertex *DagVertex) (err error) {
 
-	log.I("PushIncomingVertex: push vertex: ", vertex.Hash)
+	log.I("[dag] begin push incoming vertex.")
 
-	this.dagStorage.chanIncomingVertex.PushProto(vertex)
+	if this.EngineStatus != DagEngineStatus_Connected {
+		log.W("[dag] cannot submit payload since the dagEngine is not connected to dag.")
+		return errors.New("cannot submit payload since dagEngine is not connected to dag")
+	}
+
+	if vertex == nil {
+		log.W("[dag] cannot push nil main vertex.")
+		return errors.New("cannot push nil main vertex")
+	}
+
+	createdVertex, err := CreateTwoParentsVertex(dagStorage, this.dagNodes.GetSelf(), vertex)
+	if createdVertex != nil {
+
+		// Handle the event
+		if this.payloadHandler != nil {
+			for _, payloadData := range createdVertex.GetContent().Data {
+				this.payloadHandler.OnPayloadSubmitted(payloadData)
+			}
+		}
+
+		this.composeVertexEvent(createdVertex)
+	}
+
+	log.I("[dag] end push incoming vertex.")
+	return nil
 }
 
 // Thread 1: Validate the incoming vertexes and build the dag
 func (this *DagEngine) OnIncomingVertex(data []byte) {
 
-	log.I("Begin OnIncomingVertex")
+	log.I("[dag] begin OnIncomingVertex")
 
 	vertex := &DagVertex{}
 	proto.Unmarshal(data, vertex)
@@ -271,13 +294,13 @@ func (this *DagEngine) OnIncomingVertex(data []byte) {
 			break
 	}
 
-	log.I("End OnIncomingVertex")
+	log.I("[dag] end OnIncomingVertex")
 }
 
 // Thread 2: Mark vertex levels, and decide the candidates
 func (this *DagEngine) OnSettledVertex(hash []byte) {
 
-	log.I("Begin OnSettledVertex")
+	log.I("[dag] begin OnSettledVertex")
 
 	result, missingParentHash := ProcessVertexAndDecideCandidate(this.dagStorage, this.dagNodes, hash)
 	log.I("ProcessVertexAndDecideCandidate: result=", result)
@@ -296,26 +319,26 @@ func (this *DagEngine) OnSettledVertex(hash []byte) {
 			this.processVertexDependency.SetDependency(missingParentHash, hash)
 			break
 	}
-	log.I("End OnSettledVertex")
+	log.I("[dag] end OnSettledVertex")
 }
 
 // Thread 3: Candidates vote for Queen and Decide Queen
 func (this *DagEngine) OnSettledCandidate(candidateHash []byte) {
 
-	log.I("Begin OnSettledCandidate")
+	log.I("[dag] begin OnSettledCandidate")
 
 	// The Collect vote method will decide new queens, and write into the chanSettledQueen
 	ProcessCandidateVote(this.dagStorage, this.dagNodes, candidateHash, func(queenHash []byte) {
 		this.dagStorage.chanSettledQueen.Push(queenHash)
 	})
 
-	log.I("End OnSettledCandidate")
+	log.I("[dag] end OnSettledCandidate")
 }
 
 // Thread 4: Queen to decide accept/reject vertex
 func (this *DagEngine) OnSettleQueen(queenHash []byte) {
 
-	log.I("Begin OnSettleQueen")
+	log.I("[dag] begin OnSettleQueen")
 
 	completed := ProcessQueenDecision(this.dagStorage, this.dagNodes, queenHash, func (vertexHash []byte, result VertexConfirmResult) {
 
@@ -339,6 +362,6 @@ func (this *DagEngine) OnSettleQueen(queenHash []byte) {
 		this.dagStorage.chanSettledQueen.Push(queenHash)
 	}
 
-	log.I("End OnSettleQueen")
+	log.I("[dag] end OnSettleQueen")
 }
 

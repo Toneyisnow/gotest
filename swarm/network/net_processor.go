@@ -75,7 +75,7 @@ func (this *NetProcessor) Stop() {
 	this.mu_status.Lock()
 	defer this.mu_status.Unlock()
 
-	if (this.status == NetManagerStatus_Idle) {
+	if this.status == NetManagerStatus_Idle {
 		return
 	}
 
@@ -90,10 +90,13 @@ func (this *NetProcessor) HandleIncomingConnection(socket *NetWebSocket) {
 
 	//// Why closing it?
 	//// defer socket.Close()
+	if socket == nil || socket.clientServerHostUrl == "" {
+		log.E("[network] invalid socket information .")
+		return
+	}
 
-	remoteHost := socket.RemoteHostAddress().String()
 
-	remoteHostAddress := common.ComposeHostAddress(remoteHost)
+	remoteHostAddress := common.ComposeHostAddress(socket.clientServerHostUrl)
 
 	if remoteHostAddress == nil || !remoteHostAddress.IsValid() {
 		log.E("[network] invalid remote address.")
@@ -104,9 +107,9 @@ func (this *NetProcessor) HandleIncomingConnection(socket *NetWebSocket) {
 
 	// TODO: 小黑屋，1小时内有invalid的节点事件
 
-	log.I("[network] receive new connection:", remoteHost)
+	log.I("[network] receive new connection:", socket.clientServerHostUrl)
 
-	device := this.topology.GetPeerDeviceByIP(remoteHostAddress.IpAddress)
+	device := this.topology.GetPeerDeviceByHostAddress(socket.clientServerHostUrl)
 
 	if (device == nil) {
 		log.I("client address is not in white list, ignore it.")
@@ -136,7 +139,7 @@ func (this *NetProcessor) HandleMessage(context *NetContext, rawMessage *NetMess
 
 func (this *NetProcessor) ConnectToDeviceAsync(device *NetDevice) (resultChan chan bool) {
 
-	log.I("[network] ConnectToDevice. device=", device.GetHostUrl())
+	// log.I("[network] ConnectToDevice. device=", device.GetHostUrl())
 
 	resultChan = make(chan bool)
 
@@ -149,7 +152,6 @@ func (this *NetProcessor) ConnectToDeviceAsync(device *NetDevice) (resultChan ch
 				return
 			}
 		}
-
 
 		resultChan <- true
 	}()

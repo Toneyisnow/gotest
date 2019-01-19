@@ -20,8 +20,10 @@ var wsUpgrader = websocket.Upgrader{}
 
 type NetWebSocket struct {
 
-	_connection *websocket.Conn
+	connection  *websocket.Conn
 	_serverPort int32
+
+	clientServerHostUrl string
 }
 
 type ConnectionCallback func(socket *NetWebSocket)
@@ -31,7 +33,7 @@ func (wc *NetWebSocket) ReadMessage() (message *NetMessage, err error) {
 
 	log.I("[network] websocket read message.")
 
-	mt, rawMessageBytes, re := wc._connection.ReadMessage()
+	mt, rawMessageBytes, re := wc.connection.ReadMessage()
 	log.I("[network] raw message bytes: ", string(rawMessageBytes))
 
 	if  re != nil {
@@ -59,20 +61,20 @@ func (wc *NetWebSocket) Write(message *NetMessage) (n int, err error) {
 	bytes, err := proto.Marshal(message)
 
 	n = len(bytes)
-	err = wc._connection.WriteMessage(websocket.TextMessage, bytes)
+	err = wc.connection.WriteMessage(websocket.TextMessage, bytes)
 	return
 }
 
 func (wc *NetWebSocket) Close() error {
-	return wc._connection.Close()
+	return wc.connection.Close()
 }
 
 func (wc *NetWebSocket) LocalHostAddress() net.Addr {
-	return wc._connection.LocalAddr()
+	return wc.connection.LocalAddr()
 }
 
 func (wc *NetWebSocket) RemoteHostAddress() net.Addr {
-	return wc._connection.RemoteAddr()
+	return wc.connection.RemoteAddr()
 }
 
 // 启动websocket服务器
@@ -97,11 +99,18 @@ func StartWebSocketListen(serverPort int32, handler ConnectionCallback) {
 			log.E("[network]", err)
 			return
 		}
-		handler(&NetWebSocket{_connection: conn, _serverPort:serverPort})
+
+		socket := &NetWebSocket{connection: conn, _serverPort:serverPort}
+
+		// Get the client ServerHostUrl
+		_, rawMessageBytes, _ := conn.ReadMessage()
+		log.I("[network] raw message bytes: ", string(rawMessageBytes))
+		socket.clientServerHostUrl = string(rawMessageBytes)
+
+		handler(socket)
 	})
 
 	server := &http.Server{Addr: addr, Handler: serveMutex}
-
 
 	if err := server.ListenAndServe(); err == http.ErrServerClosed {
 		log.I("[network] serve closed")
@@ -110,10 +119,12 @@ func StartWebSocketListen(serverPort int32, handler ConnectionCallback) {
 	}
 }
 
-func StartWebSocketDial(device *NetDevice) (socket *NetWebSocket, err error) {
+func StartWebSocketDial(device *NetDevice, clientServerHostUrl string) (socket *NetWebSocket, err error) {
 
 	retryCount := 3
 	retryInterval := time.Second
+
+	log.W("[network] connect web socket, dialing to device ", device.Id)
 
 	var peeraddress = device.GetHostUrl()
 	// var peeraddr = flag.String("peeraddr", peeraddress, "http service peeraddress")
@@ -126,17 +137,20 @@ func StartWebSocketDial(device *NetDevice) (socket *NetWebSocket, err error) {
 		if (de == nil) {
 
 			log.W("[network] connect succeeded.")
-			socket = &NetWebSocket{_connection: _conn}
+
+			// Send the clientServerHostUrl
+			de = _conn.WriteMessage(websocket.TextMessage, []byte(clientServerHostUrl))
+			socket = &NetWebSocket{connection: _conn}
+
 			err = nil
 			return
 		}
 
 		err = de
-		log.W("[network] connect failed, retrying", err)
 		time.Sleep(retryInterval)
 	}
 
-	log.W("[network] connect failed!", err)
+	// log.W("[network] connect failed!", err)
 
 	return
 }
