@@ -31,9 +31,8 @@ type ConnectionCallback func(socket *NetWebSocket)
 
 func (wc *NetWebSocket) ReadMessage() (message *NetMessage, err error) {
 
-	log.I("[network] websocket read message.")
-
 	mt, rawMessageBytes, re := wc.connection.ReadMessage()
+	log.I("[network] websocket got read message.")
 	log.I("[network] raw message bytes: ", string(rawMessageBytes))
 
 	if  re != nil {
@@ -57,6 +56,8 @@ func (wc *NetWebSocket) ReadMessage() (message *NetMessage, err error) {
 }
 
 func (wc *NetWebSocket) Write(message *NetMessage) (n int, err error) {
+
+	log.I("[network] web socket write message: type=", message.MessageType, ";id=", message.MessageId)
 
 	bytes, err := proto.Marshal(message)
 
@@ -123,8 +124,6 @@ func StartWebSocketDial(device *NetDevice, clientServerHostUrl string) (socket *
 
 	retryCount := 3
 	retryInterval := time.Second
-
-	log.W("[network] connect web socket, dialing to device ", device.Id)
 
 	var peeraddress = device.GetHostUrl()
 	// var peeraddr = flag.String("peeraddr", peeraddress, "http service peeraddress")

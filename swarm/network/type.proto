@@ -39,13 +39,13 @@ message ConnectMessage {
 
 message ChallengeMessage {
 
-    string challenge = 1;
+    bytes challenge = 1;
 }
 
 message ChallengeResponseMessage {
 
-    string signature = 1;
-    string challenge = 2;
+    bytes challenge = 1;
+    string plain_text = 2;
 }
 
 message HeartbeatMessage {

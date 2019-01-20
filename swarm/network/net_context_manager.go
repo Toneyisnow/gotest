@@ -4,6 +4,7 @@ import (
 	"encoding/base64"
 	"github.com/smartswarm/core/base"
 	"github.com/smartswarm/go/log"
+	"github.com/decred/dcrd/dcrec/secp256k1"
 	"golang.org/x/crypto/openpgp/errors"
 	"sync"
 	"sync/atomic"
@@ -39,12 +40,16 @@ func (this *NetContextManager) Initialize() {
 	this.outgoingContexts = make(map[string]*NetContext)
 }
 
-func (this *NetContextManager) CreateIncomingContext(socket *NetWebSocket, device *NetDevice) (context *NetContext, err error) {
+func (this *NetContextManager) CreateIncomingContext(socket *NetWebSocket, device *NetDevice) (err error) {
 
-	context = NewIncomingContext(socket, device)
+	if socket == nil || device == nil {
+		log.W("[network] creating incoming context failed: socket or device is nil")
+		return errors.InvalidArgumentError("creating incoming context failed: socket or device is nil")
+	}
+
+	context := NewIncomingContext(socket, device)
 	if context == nil {
-		err = errors.InvalidArgumentError("Create context failed.")
-		return
+		return errors.InvalidArgumentError("[network create context failed.")
 	}
 
 	this.Add(context)
@@ -53,19 +58,38 @@ func (this *NetContextManager) CreateIncomingContext(socket *NetWebSocket, devic
 	// context.SendNotify("version", m.Owner().Ver())
 
 	context.Open()
+	err = nil
 
 	// challenge
 	if (this.netOption._needChallenge) {
-		log.I("[network] require challenge...")
-		var challenge string = base64.StdEncoding.EncodeToString(base.RandomBytes(30))
-		context.SetMetadata("challenge", challenge)
 
-		message := ComposeChallengeMessage("", challenge)
-		context.SendMessage(message)
+		log.I("[network] require challenge...")
+
+		publicKey, err := secp256k1.ParsePubKey(device.PublicKey)
+		if publicKey == nil {
+			log.W("[network] parse public key failed. cancel challenge")
+			context.status = NetConextStatus_Closed
+			return nil
+		}
+
+		plainText := base64.StdEncoding.EncodeToString(base.RandomBytes(30))
+		log.I("[network] generated plain text:", plainText)
+
+		challenge, _ := secp256k1.Encrypt(publicKey, []byte(plainText))
+		context.SetMetadata("challenge_plain_text", plainText)
+
+		log.I("[network] challenge:", string(challenge))
+
+		message := ComposeChallengeMessage(challenge)
+		err = context.SendMessage(message)
+		if err == nil {
+			context.status = NetConextStatus_PendingChallenge
+		} else {
+			context.status = NetConextStatus_Closed
+		}
 	}
 
-	err = nil
-	return
+	return nil
 }
 
 func (this *NetContextManager) CreateOrGetOutgoingContext(device *NetDevice) (context *NetContext, err error) {

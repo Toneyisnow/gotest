@@ -115,7 +115,6 @@ func (engine Engine) Start(s string) {
 	ticker := time.NewTicker(time.Second)
 	defer ticker.Stop()
 
-	
 	for {
 		select {
 		case <-done:

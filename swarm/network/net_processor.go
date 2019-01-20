@@ -153,7 +153,7 @@ func (this *NetProcessor) ConnectToDeviceAsync(device *NetDevice) (resultChan ch
 			}
 		}
 
-		resultChan <- true
+		resultChan <- (context.status == NetConextStatus_Ready)
 	}()
 
 	return resultChan
@@ -175,7 +175,7 @@ func (this *NetProcessor) SendEventToDeviceAsync(device *NetDevice, eventData []
 			return
 		}
 
-		message := ComposeEventMessage("0", eventData)
+		message := ComposeEventMessage(eventData)
 
 		context.SendMessage(message)
 
@@ -193,7 +193,7 @@ func (this *NetProcessor) SendEventToContextAsync(context *NetContext, eventData
 	go func() {
 
 		event := ComposeEvent(eventData)
-		message := ComposeEventMessage("0", eventData)
+		message := ComposeEventMessage(eventData)
 
 		context.SendMessage(message)
 

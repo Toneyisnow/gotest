@@ -4,39 +4,46 @@ import (
 	"../common/log"
 )
 
-type NetConextDirection int
-type NetConextStatus int
+type NetContextDirection int
+type NetContextStatus int
 
 const (
 	NetConextDirection_Incoming = 0
 	NetConextDirection_Outgoing = 1
 )
 const (
-	NetConextStatus_Closed = 0
-	NetConextStatus_Ready = 1
+
+	NetConextStatus_Unintialized = 0
+	NetConextStatus_Closed = 1
+	NetConextStatus_PendingChallenge = 2
+	NetConextStatus_Ready = 3
 )
 
 type NetContext struct {
 
-	contextManager *NetContextManager
-	index          int32 // 连接编号，用于简单排序
-	device         *NetDevice
-	direction      NetConextDirection
+	contextManager  *NetContextManager
+	index           int32 // 连接编号，用于简单排序
+	device          *NetDevice
+	direction       NetContextDirection
+	status			NetContextStatus
 
-	webSocket      *NetWebSocket
+	webSocket       *NetWebSocket
 
-	metadata       map[string]string
+	metadata        map[string]string
 }
 
 func NewIncomingContext(socket *NetWebSocket, device *NetDevice) *NetContext {
 
-	log.I("[net] new incomingContext for device=", device.Id)
+	log.I("[net] creating new incoming context for device=", device.Id)
 	context := new(NetContext)
 
 	context.webSocket = socket
 	context.device = device
-	context.direction = NetConextDirection_Incoming
+
 	context.metadata = make(map[string]string)
+
+	context.direction = NetConextDirection_Incoming
+	context.status = NetConextStatus_Unintialized
 
 	return context
 }
@@ -47,8 +54,11 @@ func NewOutgoingContext(socket *NetWebSocket, device *NetDevice) *NetContext {
 
 	context.webSocket = socket
 	context.device = device
-	context.direction = NetConextDirection_Outgoing
+
 	context.metadata = make(map[string]string)
+
+	context.direction = NetConextDirection_Outgoing
+	context.status = NetConextStatus_Unintialized
 
 	return context
 }
@@ -63,28 +73,27 @@ func (this *NetContext) GetAddress() string {
 
 func (this *NetContext) Open() {
 
-	log.I("[network] Start NetContext.Open()")
+	log.I("[network] start netContext.Open()")
+
 	// If incoming, message loop; if outgoing, start heartbeating
 	if (this.direction == NetConextDirection_Incoming) {
 
 		go this.MessageLoop()
 	} else if  (this.direction == NetConextDirection_Outgoing) {
 
-		go this.HeartBeat()
+		go this.MessageLoop()
 	}
-
-	log.I("[network] End NetContext.Open()")
 }
 
 func (this *NetContext) Close() {
 
-	log.I("[network] Start NetContext.Close()")
+	log.I("[network] closing net context...")
 
 	this.contextManager.Remove(this)
-	this.webSocket.Close()
-
-
-	log.I("[network] End NetContext.Close()")
+	err := this.webSocket.Close()
+	if err != nil {
+		log.W("[network] error while closing web socket:", err.Error())
+	}
 }
 
 func (this *NetContext) SendMessage(message *NetMessage) (err error) {
@@ -98,18 +107,21 @@ func (this *NetContext) MessageLoop() {
 
 	for {
 		message, err := this.webSocket.ReadMessage()
+		log.I("[network] context got message. type=", message.MessageType, " id=", message.MessageId)
 		if err != nil {
 			log.W("[network] error while read message:", err, this.device.GetHostUrl())
 			break
 		}
 		HandleMessage(this, message)
 
-		/// time.Sleep(time.Second)
+		if this.status == NetConextStatus_Closed {
+			break
+		}
 	}
 
 	defer this.Close()
 
-	log.I("[network] finish connection: ", this.index)
+	log.I("[network] closing connection: ", this.index)
 
 	/*
 	//// defer this.Close()
@@ -137,14 +149,14 @@ func (this *NetContext) HeartBeat() {
 }
 
 func (this *NetContext) SetMetadata(key string, value string) {
+
+	log.I("[net] set metadata. context id=", this.index, "key=", key, "value=", value)
 	this.metadata[key] = value
-	}
+}
 
 func (this *NetContext) GetMetadata(key string) string {
-	val, err := this.metadata[key]
-	if (err) {
-		return ""
-	}
 
+	val, _ := this.metadata[key]
+	log.I("[net] get metadata. context id=", this.index, "key=", key, "value=", val)
 	return val
 }

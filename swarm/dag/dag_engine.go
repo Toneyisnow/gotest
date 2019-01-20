@@ -92,6 +92,7 @@ func (this *DagEngine) Start() {
 	this.netProcessor.StartServer()
 	this.EngineStatus = DagEngineStatus_Started
 
+	log.I("[dag] trying to connect to dag...")
 	for {
 		this.RefreshConnection()
 		if this.EngineStatus == DagEngineStatus_Connected {
@@ -100,6 +101,7 @@ func (this *DagEngine) Start() {
 		time.Sleep(3 * time.Second)
 	}
 
+	log.I("[dag] setting up the channel callbacks.")
 	// Run every processing threads
 	go this.dagStorage.chanIncomingVertex.Listen(this.OnIncomingVertex)
 	go this.dagStorage.chanSettledVertex.Listen(this.OnSettledVertex)
@@ -113,7 +115,7 @@ func (this *DagEngine) Start() {
 		}
 	}()
 
-	log.I("[dag] end DagEngine.Start")
+	log.I("[dag] dag engine started.")
 }
 
 func (this *DagEngine) Stop() {
@@ -263,7 +265,7 @@ func (this *DagEngine) PushIncomingMainVertex(vertex *DagVertex) (err error) {
 		this.composeVertexEvent(createdVertex)
 	}
 
-	log.I("[dag] end push incoming vertex.")
+	/// log.I("[dag] end push incoming vertex.")
 	return nil
 }
 
@@ -294,7 +296,7 @@ func (this *DagEngine) OnIncomingVertex(data []byte) {
 			break
 	}
 
-	log.I("[dag] end OnIncomingVertex")
+	/// log.I("[dag] end OnIncomingVertex")
 }
 
 // Thread 2: Mark vertex levels, and decide the candidates

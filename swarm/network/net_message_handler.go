@@ -1,6 +1,11 @@
 package network
 
-import "../common/log"
+import (
+	"../common/log"
+	"math/rand"
+	"strconv"
+	"github.com/decred/dcrd/dcrec/secp256k1"
+)
 
 func HandleMessage(context *NetContext, message *NetMessage) {
 
@@ -14,37 +19,117 @@ func HandleMessage(context *NetContext, message *NetMessage) {
 		return
 	}
 
+	log.I2("[network] handling message. context=[%s] message type=[%d] message id=[%s]", context.index, message.MessageType, message.MessageId)
 
+	if message.MessageType == NetMessageType_Challenge {
 
-	log.I2("[network] handling message. context=[%s] message=[%s]", context.index, message.MessageId)
-	if message.MessageType == NetMessageType_Event {
+		log.I("[network] challenge message detected.")
+		challengeMessage := message.GetChallengeMessage()
+		HandleChallengeMessage(context, challengeMessage)
 
-		log.I("[network] EventMessage detected.")
+	} else if message.MessageType == NetMessageType_ChallengeResponse {
+
+		log.I("[network] challenge response message detected.")
+		challengeResponseMessage := message.GetChallengeResponseMessage()
+		HandleChallengeResponseMessage(context,challengeResponseMessage)
+
+	} else if message.MessageType == NetMessageType_Event {
+
+		log.I("[network] event message detected.")
 		eventMessage := message.GetEventMessage()
 
 		context.contextManager.netProcessor.GetEventHandler().HandleEventData(context, eventMessage.Data)
 	}
 }
 
-func ComposeChallengeMessage(messageId string, challenge string) *NetMessage {
+func ComposeChallengeMessage(challenge []byte) *NetMessage {
 
 	message := new(NetMessage)
-	message.MessageId = messageId
+	message.MessageId = GenerateRandomMessageId()
 	message.MessageType = NetMessageType_Challenge
 
 	challengeMessage := new(ChallengeMessage)
 	challengeMessage.Challenge = challenge
-
 
 	message.Data = &NetMessage_ChallengeMessage{ChallengeMessage: challengeMessage}
 
 	return message
 }
 
-func ComposeEventMessage(messageId string, eventData []byte) *NetMessage {
+func HandleChallengeMessage(context *NetContext, message *ChallengeMessage) {
+
+	if context == nil || message == nil {
+		return
+	}
+
+	if context.contextManager == nil || context.contextManager.netProcessor == nil ||
+		context.contextManager.netProcessor.topology == nil {
+		return
+	}
+
+	selfDevice := context.contextManager.netProcessor.topology.Self()
+
+	if selfDevice == nil || selfDevice.PrivateKey == nil {
+		return
+	}
+
+	privateKey, _ := secp256k1.PrivKeyFromBytes(selfDevice.PrivateKey)
+	plainTextBytes, err := secp256k1.Decrypt(privateKey, message.Challenge)
+
+	log.I("[network] handling challenge message. challenge=", message.Challenge)
+	log.I("[network] decrypted plain text:", string(plainTextBytes))
+
+	if err != nil {
+		return
+	}
+
+	responseMessage := ComposeChallengeResponseMessage(message.Challenge, string(plainTextBytes))
+	err = context.SendMessage(responseMessage)
+
+	if err == nil {
+		context.status = NetConextStatus_Ready
+	} else {
+		context.status = NetConextStatus_Closed
+	}
+}
+
+func ComposeChallengeResponseMessage(challenge []byte, plainText string) *NetMessage {
 
 	message := new(NetMessage)
-	message.MessageId = messageId
+	message.MessageId = GenerateRandomMessageId()
+	message.MessageType = NetMessageType_ChallengeResponse
+
+	challengeResponseMessage := new(ChallengeResponseMessage)
+	challengeResponseMessage.Challenge = challenge
+	challengeResponseMessage.PlainText = plainText
+
+	message.Data = &NetMessage_ChallengeResponseMessage{ChallengeResponseMessage: challengeResponseMessage}
+
+	return message
+}
+
+func HandleChallengeResponseMessage(context *NetContext, message *ChallengeResponseMessage) {
+
+	if context == nil || message == nil {
+		return
+	}
+
+	plainText := context.GetMetadata("challenge_plain_text")
+	log.I("[net] handling challenge response. plain text in metadata:", plainText, "plain text in response:", message.PlainText)
+
+	if plainText == message.PlainText {
+		log.I("[network] challenge response text is matching. set status to ready")
+		context.status = NetConextStatus_Ready
+	} else {
+		log.I("[network] challenge response text is not matching. set status to closed")
+		context.status = NetConextStatus_Closed
+	}
+}
+
+func ComposeEventMessage(eventData []byte) *NetMessage {
+
+	message := new(NetMessage)
+	message.MessageId = GenerateRandomMessageId()
 	message.MessageType = NetMessageType_Event
 
 	eventMessage := new(EventMessage)
@@ -55,4 +140,9 @@ func ComposeEventMessage(messageId string, eventData []byte) *NetMessage {
 
 	return message
 
+}
+
+func GenerateRandomMessageId() string {
+
+	return strconv.FormatUint(rand.Uint64(), 10)
 }
