@@ -27,3 +27,9 @@ message DagVertexConnection {
 
     repeated uint64 node_id_list = 1;
 }
+
+message DagVertexIncoming {
+
+    bytes hash = 1;
+    bool is_main = 2;
+}

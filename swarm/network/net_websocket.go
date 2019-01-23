@@ -42,7 +42,7 @@ func (wc *NetWebSocket) ReadMessage() (message *NetMessage, err error) {
 		err = e_unsupported_message_type
 	} else {
 
-		log.I("[network] raw message bytes: ", string(rawMessageBytes))
+		log.I("[network] received raw text message from websocket")
 		message = new(NetMessage)
 		pe := proto.Unmarshal(rawMessageBytes, message)
 		if pe != nil {
@@ -105,7 +105,6 @@ func StartWebSocketListen(serverPort int32, handler ConnectionCallback) {
 
 		// Get the client ServerHostUrl
 		_, rawMessageBytes, _ := conn.ReadMessage()
-		log.I("[network] raw message bytes: ", string(rawMessageBytes))
 		socket.clientServerHostUrl = string(rawMessageBytes)
 
 		handler(socket)

@@ -46,7 +46,7 @@ func (this *RocksTable) Get(key []byte) []byte {
 func (this *RocksTable) Exists(key []byte) bool {
 
 	value := this.Get(key)
-	return (value != nil)
+	return value != nil
 }
 
 func (this *RocksTable) Delete(key []byte) error {

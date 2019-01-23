@@ -76,20 +76,35 @@ func (this *DagEventWorker) handleVertexesDataEvent(vertexesDataEvent *VertexesD
 	if vertexesDataEvent.Vertexes != nil {
 		for _, vertex := range vertexesDataEvent.Vertexes {
 
-			if validated, err := this.validateVertex(vertex); validated == ProcessResult_Yes && err == nil {
-
-				// If the checking is passed, push the vertex into next queue
-				this.dagEngine.dagStorage.chanIncomingVertex.PushProto(vertex)
-			}
+			this.handleVertex(vertex, false)
 		}
 	}
 
-	mainVertex := vertexesDataEvent.MainVertex
-	if validated, err := this.validateVertex(mainVertex); validated == ProcessResult_Yes && err == nil {
+	this.handleVertex(vertexesDataEvent.MainVertex, true)
+}
 
-		// If the checking is passed, push the vertex into next queue, and also decide whether to send it out
-		this.dagEngine.dagStorage.chanIncomingVertex.PushProto(mainVertex)
-		this.dagEngine.PushIncomingMainVertex(mainVertex)
+func (this *DagEventWorker) handleVertex(vertex *DagVertex, isMain bool) {
+
+	if vertex == nil || vertex.Hash == nil || vertex.Signature == nil ||vertex.CreatorNodeId == 0 {
+		return
+	}
+
+	// Check duplication, just ignore it
+	// TODO: Improve the logic to handle duplication, for double check and fix previous damanaged data
+	if GetVertex(this.dagEngine.dagStorage, vertex.Hash) != nil {
+		log.I("[dag] handling vertex: vertex has been found in storage, ignore it. Hash=", vertex.Hash)
+		return
+	}
+
+	if validated, err := this.validateVertex(vertex); validated == ProcessResult_Yes && err == nil {
+
+		// Save the vertex bytes in storage
+		err = SaveVertex(this.dagEngine.dagStorage, vertex)
+
+		// Push the vertex into next queue
+		incomingVertex := &DagVertexIncoming{ Hash:vertex.Hash, IsMain:isMain }
+
+		this.dagEngine.dagStorage.chanIncomingVertex.PushProto(incomingVertex)
 	}
 }
 
@@ -126,5 +141,6 @@ func (this *DagEventWorker) validateVertex(vertex *DagVertex) (result ProcessRes
 		return ProcessResult_No, nil
 	}
 
+	log.I("[dag] vertex has passed validation.")
 	return ProcessResult_Yes, nil
 }

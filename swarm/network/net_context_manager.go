@@ -78,7 +78,7 @@ func (this *NetContextManager) CreateIncomingContext(socket *NetWebSocket, devic
 		challenge, _ := secp256k1.Encrypt(publicKey, []byte(plainText))
 		context.SetMetadata("challenge_plain_text", plainText)
 
-		log.I("[network] challenge:", string(challenge))
+		// log.I("[network] challenge:", string(challenge))
 
 		message := ComposeChallengeMessage(challenge)
 		err = context.SendMessage(message)

@@ -36,12 +36,17 @@ func CreateSelfDataVertex(dagStorge *DagStorage, selfNode *DagNode, data Payload
 	return createdVertex, err
 }
 
-func CreateTwoParentsVertex(dagStorage *DagStorage, selfNode *DagNode, peerParent *DagVertex) (vertex *DagVertex, err error) {
+func CreateTwoParentsVertex(dagStorage *DagStorage, selfNode *DagNode, peerParentHash []byte) (vertex *DagVertex, err error) {
 
 	createVertexMutex.Lock()
 	defer createVertexMutex.Unlock()
 
-	createdVertex, err := createVertex(dagStorage, selfNode, nil)
+	peerParent := GetVertex(dagStorage, peerParentHash)
+	if peerParent == nil {
+		return nil, errors.New("cannot find peer parent in storage")
+	}
+
+	createdVertex, err := createVertex(dagStorage, selfNode, peerParent)
 
 	return createdVertex, err
 }
@@ -94,11 +99,12 @@ func createVertex(dagStorage *DagStorage, selfNode *DagNode, peerParent *DagVert
 	vertex.Signature = signature
 
 	// Save to database
-	SaveVertex(dagStorage, vertex)
+	err = SaveVertex(dagStorage, vertex)
 
 	// Clear the pending queue data
 	dagStorage.queuePendingData.Clear()
 
+	log.I("[dag] new vertex created.")
 	err = nil
 	return
 }
@@ -119,6 +125,8 @@ func CreateGenesisVertex(dagStorage *DagStorage, selfNode *DagNode) (vertex *Dag
 	// Mutex to read from storage
 	content.SelfParentHash = nil
 	content.PeerParentHash = nil
+
+	vertex.Content = content
 
 	// Calculate Hash and Encrypt it
 	contentBytes, err := proto.Marshal(content)

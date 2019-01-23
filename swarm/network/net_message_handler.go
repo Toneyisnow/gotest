@@ -76,7 +76,7 @@ func HandleChallengeMessage(context *NetContext, message *ChallengeMessage) {
 	privateKey, _ := secp256k1.PrivKeyFromBytes(selfDevice.PrivateKey)
 	plainTextBytes, err := secp256k1.Decrypt(privateKey, message.Challenge)
 
-	log.I("[network] handling challenge message. challenge=", message.Challenge)
+	log.I("[network] handling challenge message. challenge len=", len(message.Challenge))
 	log.I("[network] decrypted plain text:", string(plainTextBytes))
 
 	if err != nil {
@@ -115,7 +115,7 @@ func HandleChallengeResponseMessage(context *NetContext, message *ChallengeRespo
 	}
 
 	plainText := context.GetMetadata("challenge_plain_text")
-	log.I("[net] handling challenge response. plain text in metadata:", plainText, "plain text in response:", message.PlainText)
+	log.I("[net] handling challenge response.")
 
 	if plainText == message.PlainText {
 		log.I("[network] challenge response text is matching. set status to ready")

@@ -35,6 +35,7 @@ type DagStorage struct {
 	tableCandidateDecision *storage.RocksTable
 
 	tableNodeSyncTimestamp *storage.RocksTable
+	tableNodeSyncVertex *storage.RocksTable
 
 	// All queues defined
 	queuePendingData            *storage.RocksSequenceQueue
@@ -107,6 +108,10 @@ func NewDagStorage(storageLocation string) *DagStorage {
 
 	// The last synced timestamp for a given node
 	dagStorage.tableNodeSyncTimestamp = storage.NewRocksTable(dagStorage.storage, "NT")
+
+	// Whether a node knows a vertex
+	dagStorage.tableNodeSyncVertex = storage.NewRocksTable(dagStorage.storage, "NS")
+
 
 
 	// ------ Initialize the queue data ------
@@ -206,17 +211,9 @@ func GetLatestNodeVertex(dagStorage *DagStorage, nodeId uint64, hashOnly bool) (
 
 	if hashOnly {
 		return resultByte, nil
+	} else {
+		return resultByte, GetVertex(dagStorage, resultByte)
 	}
-
-	vertexByte := dagStorage.tableVertex.Get(resultByte)
-
-	result := &DagVertex{}
-	err := proto.Unmarshal(vertexByte, result)
-	if err != nil {
-		return nil, nil
-	}
-
-	return resultByte, result
 }
 
 func GetVertexLink(dagStorage *DagStorage, vertexHash []byte) *DagVertexLink {
@@ -245,17 +242,9 @@ func GetCandidateForNode(dagStorage *DagStorage, nodeId uint64, level uint32, ha
 
 	if hashOnly {
 		return resultByte, nil
+	} else {
+		return resultByte, GetVertex(dagStorage, resultByte)
 	}
-
-	vertexByte := dagStorage.tableVertex.Get(resultByte)
-
-	result := &DagVertex{}
-	err := proto.Unmarshal(vertexByte, result)
-	if err != nil {
-		return nil, nil
-	}
-
-	return resultByte, result
 }
 
 
@@ -269,23 +258,15 @@ func GetGenesisVertex(dagStorage *DagStorage, nodeId uint64, hashOnly bool) (has
 
 	if hashOnly {
 		return resultByte, nil
+	} else {
+		return resultByte, GetVertex(dagStorage, resultByte)
 	}
-
-	vertexByte := dagStorage.tableVertex.Get(resultByte)
-
-	result := &DagVertex{}
-	err := proto.Unmarshal(vertexByte, result)
-	if err != nil {
-		return nil, nil
-	}
-
-	return resultByte, result
 }
 
 func GetVertexConnection(dagStorage *DagStorage, vertexHash []byte, targetVertexHash []byte) *DagVertexConnection {
 
 	key := append(vertexHash, targetVertexHash...)
-	resultByte := dagStorage.tableVertexStatus.Get(key)
+	resultByte := dagStorage.tableVertexConnection.Get(key)
 	if resultByte == nil {
 		return nil
 	}
@@ -318,5 +299,25 @@ func SetCandidateDecision(dagStorage *DagStorage, vertexHash []byte, targetVerte
 	key := append(vertexHash, targetVertexHash...)
 	value := storage.ConvertUint32ToBytes(uint32(decision))
 
-	dagStorage.tableCandidateDecision.InsertOrUpdate(key, value)
+	err := dagStorage.tableCandidateDecision.InsertOrUpdate(key, value)
+	if err != nil {
+
+	}
+}
+
+func DoesExistNodeSyncVertex(dagStorage *DagStorage, nodeId uint64, vertexHash []byte) bool {
+
+	key := append(storage.ConvertUint64ToBytes(nodeId), vertexHash...)
+
+	return dagStorage.tableNodeSyncVertex.Exists(key)
+}
+
+func SetNodeSyncVertex(dagStorage *DagStorage, nodeId uint64, vertexHash []byte) {
+
+	key := append(storage.ConvertUint64ToBytes(nodeId), vertexHash...)
+
+	err := dagStorage.tableNodeSyncVertex.InsertOrUpdate(key, []byte{ '1' })
+	if err != nil {
+
+	}
 }
