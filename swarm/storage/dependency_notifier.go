@@ -40,7 +40,10 @@ func NewDependencyNotifier(notifyFunc func(value []byte)) *DependencyNotifier {
 
 func (this *DependencyNotifier) SetDependency(dependent []byte, value []byte) {
 
-	key := string(dependent)
+	key := "default"
+	if dependent != nil {
+		key = string(dependent)
+	}
 
 	newData := &DependencyData{time.Now(), value}
 

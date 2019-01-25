@@ -192,7 +192,7 @@ func SetVertexStatus(dagStorage *DagStorage, vertexHash []byte, status *DagVerte
 	}
 }
 
-func SetLatestNodeVertex(dagStorage *DagStorage, nodeId uint64, vertexHash []byte) {
+func SetNodeLatestVertex(dagStorage *DagStorage, nodeId uint64, vertexHash []byte) {
 
 	key := storage.ConvertUint64ToBytes(nodeId)
 	err := dagStorage.tableNodeLatestVertex.InsertOrUpdate(key, vertexHash)
@@ -201,7 +201,7 @@ func SetLatestNodeVertex(dagStorage *DagStorage, nodeId uint64, vertexHash []byt
 	}
 }
 
-func GetLatestNodeVertex(dagStorage *DagStorage, nodeId uint64, hashOnly bool) (hash []byte, vertex *DagVertex) {
+func GetNodeLatestVertex(dagStorage *DagStorage, nodeId uint64, hashOnly bool) (hash []byte, vertex *DagVertex) {
 
 	key := storage.ConvertUint64ToBytes(nodeId)
 	resultByte := dagStorage.tableNodeLatestVertex.Get(key)
@@ -218,7 +218,7 @@ func GetLatestNodeVertex(dagStorage *DagStorage, nodeId uint64, hashOnly bool) (
 
 func GetVertexLink(dagStorage *DagStorage, vertexHash []byte) *DagVertexLink {
 
-	linkByte := dagStorage.tableVertexStatus.Get(vertexHash)
+	linkByte := dagStorage.tableVertexLink.Get(vertexHash)
 	if linkByte == nil {
 		return nil
 	}
@@ -235,7 +235,7 @@ func GetVertexLink(dagStorage *DagStorage, vertexHash []byte) *DagVertexLink {
 func GetCandidateForNode(dagStorage *DagStorage, nodeId uint64, level uint32, hashOnly bool) (hash []byte, vertex *DagVertex) {
 
 	key := append(storage.ConvertUint64ToBytes(nodeId), storage.ConvertUint32ToBytes(level)...)
-	resultByte := dagStorage.tableVertexStatus.Get(key)
+	resultByte := dagStorage.tableCandidate.Get(key)
 	if resultByte == nil {
 		return nil, nil
 	}
@@ -247,6 +247,15 @@ func GetCandidateForNode(dagStorage *DagStorage, nodeId uint64, level uint32, ha
 	}
 }
 
+
+func SetCandidateForNode(dagStorage *DagStorage, nodeId uint64, level uint32, vertexHash []byte) {
+
+	key := append(storage.ConvertUint64ToBytes(nodeId), storage.ConvertUint32ToBytes(level)...)
+	err := dagStorage.tableCandidate.InsertOrUpdate(key, vertexHash)
+	if err != nil {
+
+	}
+}
 
 func GetGenesisVertex(dagStorage *DagStorage, nodeId uint64, hashOnly bool) (hash []byte, vertex *DagVertex) {
 
@@ -280,6 +289,16 @@ func GetVertexConnection(dagStorage *DagStorage, vertexHash []byte, targetVertex
 	return result
 }
 
+func SetVertexConnection(dagStorage *DagStorage, vertexHash []byte, targetVertexHash []byte, connection *DagVertexConnection) {
+
+	key := append(vertexHash, targetVertexHash...)
+	valueByte, _ := proto.Marshal(connection)
+
+	err := dagStorage.tableVertexConnection.InsertOrUpdate(key, valueByte)
+	if err != nil {
+
+	}
+}
 
 func GetCandidateDecision(dagStorage *DagStorage, vertexHash []byte, targetVertexHash []byte) CandidateDecision {
 
@@ -317,6 +336,16 @@ func SetNodeSyncVertex(dagStorage *DagStorage, nodeId uint64, vertexHash []byte)
 	key := append(storage.ConvertUint64ToBytes(nodeId), vertexHash...)
 
 	err := dagStorage.tableNodeSyncVertex.InsertOrUpdate(key, []byte{ '1' })
+	if err != nil {
+
+	}
+}
+
+func SetGenesisVertex(dagStorage *DagStorage, nodeId uint64, vertexHash []byte) {
+
+	// Set tableGenesisVertex
+	key := storage.ConvertUint64ToBytes(nodeId)
+	err := dagStorage.tableGenesisVertex.InsertOrUpdate(key, vertexHash)
 	if err != nil {
 
 	}

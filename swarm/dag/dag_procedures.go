@@ -97,11 +97,11 @@ func FindPossibleUnknownVertexesForNode(dagStorage *DagStorage, selfNode *DagNod
 		return
 	}
 
-	_, latestVertex := GetLatestNodeVertex(dagStorage, selfNode.NodeId, false)
+	_, latestVertex := GetNodeLatestVertex(dagStorage, selfNode.NodeId, false)
 	if latestVertex == nil {
 		return
 	}
-	log.I("[dag] latest vertex on node ", selfNode.NodeId, ": vertex=", hex.EncodeToString(latestVertex.Hash))
+	log.I("[dag] latest vertex on node ", selfNode.NodeId, ": vertex=", GetShortenedHash(latestVertex.Hash))
 
 	potentialDependentList := []*DagVertex { latestVertex }
 
@@ -123,7 +123,7 @@ func FindPossibleUnknownVertexesForNode(dagStorage *DagStorage, selfNode *DagNod
 
 			if !DoesExistNodeSyncVertex(dagStorage, peerNode.NodeId, dVertex.Hash) {
 
-				log.I("[dag] node", peerNode.NodeId, "does not know vertex", hex.EncodeToString(dVertex.Hash), ", adding it to related list.")
+				log.I("[dag] node", peerNode.NodeId, "does not know vertex", GetShortenedHash(dVertex.Hash), ", adding it to related list.")
 				resultList = append([]*DagVertex{ dVertex }, resultList...)
 
 				if dVertex.GetContent().SelfParentHash != nil {
@@ -159,17 +159,18 @@ func FlagKnownVertexForNode(dagStorage *DagStorage, node *DagNode, vertexList []
 
 // ProcessIncomingVertex:
 // 1. Make sure both of the parents are already in the Dag, otherwise return Undecided
-// 2. Put the vertex into tableVertex, queueFreshVertex, levelQueueUnconfirmedVertex
+// 2. Build the vertex into graph
+//
 func ProcessIncomingVertex(dagStorage *DagStorage, nodes *DagNodes, vertexHash []byte) (result ProcessResult, missingParentHash []byte) {
 
 	if dagStorage == nil || vertexHash == nil {
 		return ProcessResult_No, nil
 	}
 
-	log.I("[dag] process incoming vertex:", vertexHash)
+	log.I("[dag] process incoming vertex:", GetShortenedHash(vertexHash))
 	vertex := GetVertex(dagStorage, vertexHash)
 
-	if vertex == nil || vertex.Hash == nil || vertex.Signature == nil ||vertex.CreatorNodeId == 0 {
+	if vertex == nil || vertex.Hash == nil || vertex.Signature == nil ||vertex.CreatorNodeId == 0 || vertex.GetContent() == nil {
 		log.W("[dag] process incoming vertex: vertex is broken.")
 		return ProcessResult_No, nil
 	}
@@ -189,51 +190,46 @@ func ProcessIncomingVertex(dagStorage *DagStorage, nodes *DagNodes, vertexHash [
 		log.I("[dag] self parent hash is nil")
 		// Check if this is genesisVertex
 		genesisVertexHash, _ := GetGenesisVertex(dagStorage, creatorNode.NodeId, true)
-		if genesisVertexHash == nil {
+		if genesisVertexHash == nil || bytes.Equal(genesisVertexHash, vertex.Hash) {
 
-			log.I("[dag] cannot find genesis vertex for node [", creatorNode.NodeId, "], assigning this vertex as genesis.")
-			// This is the genesis vertex, save it
-			AssignGenesisVertex(dagStorage, creatorNode.NodeId, vertex.Hash)
+			if genesisVertexHash == nil {
+				log.I("[dag] cannot find genesis vertex for node [", creatorNode.NodeId, "], assigning this vertex as genesis.")
+				// This is the genesis vertex, save it
+				SetGenesisVertex(dagStorage, creatorNode.NodeId, vertex.Hash)
+			}
 
-			return ProcessResult_Yes, nil
+			// Building the genesis vertex
+			if BuildVertexGraph(dagStorage, creatorNode.NodeId, vertex.Hash, nil, nil) {
 
-		} else if !bytes.Equal(genesisVertexHash, vertex.Hash) {
+				return ProcessResult_Yes, nil
+			} else {
+				// Something temporary failed, should retry
+				return ProcessResult_Undecided, nil
+			}
+
+		} else {
 
 			// This is not genesis vertex, should error out
-			log.W("ProcessIncomingVertex: self parent hash is nil")
+			log.W("ProcessIncomingVertex: self parent hash is nil and it's not genesis vertex")
 			return ProcessResult_No, nil
 		}
 	}
 
-	if !dagStorage.tableVertex.Exists(selfParentHash) {
+	if GetVertex(dagStorage, selfParentHash) == nil || GetVertexLink(dagStorage, selfParentHash) == nil {
 		return ProcessResult_Undecided, selfParentHash
 	}
 
-	if peerParentHash != nil && !dagStorage.tableVertex.Exists(peerParentHash) {
+	if peerParentHash != nil &&
+		(GetVertex(dagStorage, peerParentHash) == nil || GetVertexLink(dagStorage, peerParentHash) == nil) {
 		return ProcessResult_Undecided, peerParentHash
 	}
 
-	// Save the new vertex into tableVertex
-	if err := SaveVertex(dagStorage, vertex); err != nil {
-		log.W("ProcessIncomingVertex: marshal vertex failed.")
-		return ProcessResult_No, nil
+	//Save the vertex to graph
+	if BuildVertexGraph(dagStorage, vertex.CreatorNodeId, vertex.Hash, selfParentHash, peerParentHash) {
+		return ProcessResult_Yes, nil
+	} else {
+		return ProcessResult_Undecided, nil
 	}
-
-	// Save to tableVertexLink
-	vertexLink := &DagVertexLink{}
-	vertexLink.NodeId = vertex.CreatorNodeId
-	vertexLink.SelfParentHash = selfParentHash
-	vertexLink.PeerParentHash = peerParentHash
-	vertexParentBytes, _ := proto.Marshal(vertexLink)
-	err := dagStorage.tableVertexLink.InsertOrUpdate(vertex.GetHash(), vertexParentBytes)
-	if err != nil {
-		return ProcessResult_No, nil
-	}
-
-	// Save to tableNodeLatestVertex
-	SetLatestNodeVertex(dagStorage, creatorNode.NodeId, vertex.Hash)
-
-	return ProcessResult_Yes, nil
 }
 
 // ProcessVertexAndDecideCandidate:
@@ -242,50 +238,73 @@ func ProcessIncomingVertex(dagStorage *DagStorage, nodes *DagNodes, vertexHash [
 // to be level+1
 // 3. If this is the first vertex in the level for this node, mark this vertex as candidate and return Yes, otherwise No
 // 4. Save this vertex into tableLatestVertex, tableCandidate
+//
+// Table to fill: tableVertexStatus,
 func ProcessVertexAndDecideCandidate(dagStorage *DagStorage, dagNodes *DagNodes, vertexHash []byte) (result ProcessResult, missingParentHash []byte) {
+
+	log.I("[dag] processing vertex and decide candidate... vertex=", GetShortenedHash(vertexHash))
 
 	link := GetVertexLink(dagStorage, vertexHash)
 	if link == nil {
+		log.W("[dag] cannot find vertex link for vertex.")
 		return ProcessResult_No, nil
 	}
 
 	if link.SelfParentHash == nil {
 
 		// This should be a genesis vertex, double check for each nodes to confirm.
-		if IsGenesisVertex(dagStorage, dagNodes, vertexHash) {
+		isGenesis, nodeId := IsGenesisVertex(dagStorage, dagNodes, vertexHash)
+		if isGenesis {
 
-			err := dagStorage.levelQueueUnconfirmedVertex.Push(uint32(0), vertexHash)
-			err = dagStorage.levelQueueUndecidedCandidate.Push(uint32(0), vertexHash)
+			log.I("[dag] the vertex is genesis vertex, push it into candidate queue.")
+
+			// Set the node Level=1, isCandidate=true
+			vertexStatus := &DagVertexStatus{ Level:1, IsCandidate:true, IsQueen:false, IsQueenDecided:false }
+			SetVertexStatus(dagStorage, vertexHash, vertexStatus)
+
+			SetCandidateForNode(dagStorage, nodeId, uint32(1), vertexHash)
+
+			err := dagStorage.levelQueueUnconfirmedVertex.Push(uint32(1), vertexHash)
+			err = dagStorage.levelQueueUndecidedCandidate.Push(uint32(1), vertexHash)
 			if err != nil {
 
 			}
 			return ProcessResult_Yes, nil
+		} else {
+			log.W("[dag] self parent hash is nil and vertex is not genesis, stop processing it.")
+			return ProcessResult_No, nil
 		}
 	}
 
+	// If self parent status is not ready yet, just return Undecided and wait for processing again
 	selfParentStatus := GetVertexStatus(dagStorage, link.SelfParentHash)
-	peerParentStatus := GetVertexStatus(dagStorage, link.PeerParentHash)
-
-	peerParentLink := GetVertexLink(dagStorage, link.PeerParentHash)
-	if peerParentLink == nil {
-		return ProcessResult_No, nil
-	}
-
 	if selfParentStatus == nil || selfParentStatus.Level == 0 {
-		// At least one onf the parent status is not ready yet, just return Undecided and wait for processing again
+		log.W("[dag] cannot find self parent status, postpone it to next execution.")
 		return ProcessResult_Undecided, link.SelfParentHash
 	}
 
-	if peerParentStatus == nil || peerParentStatus.Level == 0 {
-
-		// At least one onf the parent status is not ready yet, just return Undecided and wait for processing again
-		return ProcessResult_Undecided, link.PeerParentHash
-	}
-
 	currentLevel := selfParentStatus.Level
-	if selfParentStatus.Level < peerParentStatus.Level {
-		currentLevel = peerParentStatus.Level
+
+	if link.PeerParentHash != nil {
+		peerParentStatus := GetVertexStatus(dagStorage, link.PeerParentHash)
+		if peerParentStatus == nil || peerParentStatus.Level == 0 {
+			log.W("[dag] cannot find peer parent status, postpone it to next execution.")
+			return ProcessResult_Undecided, link.PeerParentHash
+		}
+
+		peerParentLink := GetVertexLink(dagStorage, link.PeerParentHash)
+		if peerParentLink == nil {
+			// This should not happen
+			log.W("[dag] error while getting peer parent link.")
+			return ProcessResult_No, nil
+		}
+
+		if selfParentStatus.Level < peerParentStatus.Level {
+			currentLevel = peerParentStatus.Level
+		}
 	}
+
+	log.I("[dag] current level of the vertex:", currentLevel)
 
 	vertexStatus := GetVertexStatus(dagStorage, vertexHash)
 	if vertexStatus == nil {
@@ -296,12 +315,26 @@ func ProcessVertexAndDecideCandidate(dagStorage *DagStorage, dagNodes *DagNodes,
 	for _, dagNode := range dagNodes.AllNodes() {
 
 		candidateHash, _ := GetCandidateForNode(dagStorage, dagNode.NodeId, currentLevel, true)
+		if candidateHash == nil {
+			// It's possible that for given node and level there is no candidate
+			continue
+		}
 
+		log.I("[dag] got candidate on node=", dagNode.NodeId, "level=", currentLevel, "vertex_hash=", candidateHash)
 		connection := CalculateVertexConnection(dagStorage, vertexHash, candidateHash)
-		if len(connection.NodeIdList) >= dagNodes.GetMajorityCount() {
+		if connection == nil {
+			// Data is missing, so skip this connection for now
+			continue
+		}
+
+		if connection.IsConnected() && connection.GetNodeCount() >= dagNodes.GetMajorityCount() {
+			log.I("[dag] connection from", GetShortenedHash(vertexHash), "to candidate", GetShortenedHash(candidateHash), "is strong.")
 			strongConnectionCount ++
+		} else {
+			log.I("[dag] connection from", GetShortenedHash(vertexHash), "to candidate", GetShortenedHash(candidateHash), "is not strong.")
 		}
 	}
+	log.I("[dag] strong connection count:", strongConnectionCount)
 
 	if strongConnectionCount > dagNodes.GetMajorityCount() {
 		vertexStatus.Level = currentLevel + 1
@@ -310,17 +343,21 @@ func ProcessVertexAndDecideCandidate(dagStorage *DagStorage, dagNodes *DagNodes,
 		vertexStatus.Level = currentLevel
 	}
 
+	log.I("[dag] set status for vertex. level=", vertexStatus.Level, "isCandidate=",vertexStatus.IsCandidate, "vertex=", GetShortenedHash(vertexHash))
+
 	// Save the vertex status
-	vertexStatusByte, _ := proto.Marshal(vertexStatus)
-	err := dagStorage.tableVertexStatus.InsertOrUpdate(vertexHash, vertexStatusByte)
-	if err != nil {
-		return ProcessResult_No, nil
-	}
+	SetVertexStatus(dagStorage, vertexHash, vertexStatus)
 
 	// Push to queue and channel if necessary
-	err = dagStorage.levelQueueUnconfirmedVertex.Push(vertexStatus.Level, vertexHash)
+	err := dagStorage.levelQueueUnconfirmedVertex.Push(vertexStatus.Level, vertexHash)
+	if err != nil {
+		// temporary fail, should retry
+		return ProcessResult_Undecided, nil
+	}
 
 	if vertexStatus.IsCandidate {
+
+		SetCandidateForNode(dagStorage, link.NodeId, vertexStatus.Level, vertexHash)
 		err = dagStorage.levelQueueUndecidedCandidate.Push(vertexStatus.Level, vertexHash)
 		return ProcessResult_Yes, nil
 	} else {
@@ -333,6 +370,7 @@ func ProcessVertexAndDecideCandidate(dagStorage *DagStorage, dagNodes *DagNodes,
 // 2. Iterate all undecidedCandidate, collect the votes from level-1
 func ProcessCandidateVote(dagStorage *DagStorage, dagNodes *DagNodes, nowCandidateHash []byte, onQueenFound func([]byte)) ProcessResult {
 
+	log.I("[dag] processing candidate vote. candidate hash=", GetShortenedHash(nowCandidateHash))
 	nowCandidateStatus := GetVertexStatus(dagStorage, nowCandidateHash)
 
 	if nowCandidateStatus == nil {
@@ -497,91 +535,121 @@ func ProcessQueenDecision(dagStorage *DagStorage, dagNodes *DagNodes, queenHash 
 	return ProcessResult_Yes
 }
 
-func EnsureGenesisVertex(dagStorage *DagStorage, node *DagNode) (hash []byte) {
+func EnsureGenesisVertex(dagStorage *DagStorage, node *DagNode) (newCreated bool, hash []byte) {
 
 	genesisVertexHash, _ := GetGenesisVertex(dagStorage, node.NodeId, true)
 
 	if genesisVertexHash != nil {
-		return genesisVertexHash
+		return false, genesisVertexHash
 	}
 
 	// Create if missing
 	vertex, err := CreateGenesisVertex(dagStorage, node)
 	if err != nil {
-		return nil
+		return false, nil
 	}
 
-	AssignGenesisVertex(dagStorage, node.NodeId, vertex.Hash)
-	return vertex.Hash
+	SetGenesisVertex(dagStorage, node.NodeId, vertex.Hash)
+	SetNodeLatestVertex(dagStorage, node.NodeId, vertex.Hash)
+
+	return true, vertex.Hash
 }
 
-func AssignGenesisVertex(dagStorage *DagStorage, nodeId uint64, vertexHash []byte) {
+func BuildVertexGraph(dagStorage *DagStorage, nodeId uint64, vertexHash []byte, selfParentHash []byte, peerParentHash []byte) bool {
 
-	// Set tableGenesisVertex
-	key := storage.ConvertUint64ToBytes(nodeId)
-	err := dagStorage.tableGenesisVertex.InsertOrUpdate(key, vertexHash)
-	if err != nil {
-
+	if dagStorage == nil || vertexHash == nil || nodeId == 0 {
+		log.W("[dag] cannot build vertex graph.")
+		return false
 	}
-
-	// Set the last vertex on node
-	SetLatestNodeVertex(dagStorage, nodeId, vertexHash)
-
-	// Set the node Level=0, isCandidate=true
-	vertexStatus := &DagVertexStatus{ Level:0, IsCandidate:true, IsQueen:false, IsQueenDecided:false }
-	SetVertexStatus(dagStorage, vertexHash, vertexStatus)
 
 	// Save to tableVertexLink
 	vertexLink := &DagVertexLink{}
 	vertexLink.NodeId = nodeId
-	vertexLink.SelfParentHash = nil
-	vertexLink.PeerParentHash = nil
+	vertexLink.SelfParentHash = selfParentHash
+	vertexLink.PeerParentHash = peerParentHash
 	vertexLinkBytes, _ := proto.Marshal(vertexLink)
-	err = dagStorage.tableVertexLink.InsertOrUpdate(vertexHash, vertexLinkBytes)
+	err := dagStorage.tableVertexLink.InsertOrUpdate(vertexHash, vertexLinkBytes)
 	if err != nil {
-
+		return false
 	}
+
+	// Update the Latest Vertex on Node
+	SetNodeLatestVertex(dagStorage, nodeId, vertexHash)
+
+	return true
 }
 
+//
+// CalculateVertexConnection:
+// This should always return a non-null value:
+//
 func CalculateVertexConnection(dagStorage *DagStorage, vertexHash []byte, targetVertexHash []byte) *DagVertexConnection {
 
-	connectionResult := GetVertexConnection(dagStorage, vertexHash, targetVertexHash)
-	if connectionResult != nil {
-		return connectionResult
-	}
-
-	connectionResult = &DagVertexConnection{}
-
 	vertexLink := GetVertexLink(dagStorage, vertexHash)
-	if vertexLink == nil || vertexLink.SelfParentHash == nil || vertexLink.PeerParentHash == nil {
+	if vertexLink == nil {
 		// Something wrong unexpected, just return nil
 		return nil
 	}
 
-	selfParentConnection := &DagVertexConnection{}
-	if bytes.Equal(vertexLink.SelfParentHash, targetVertexHash) {
-		selfParentConnection.NodeIdList = []uint64 { vertexLink.NodeId }
-	} else {
-		selfParentConnection = GetVertexConnection(dagStorage, vertexLink.SelfParentHash, targetVertexHash)
+	existingConnection := GetOrDefaultVertexConnection(dagStorage, vertexHash, targetVertexHash, vertexLink.NodeId)
+	if existingConnection != nil {
+		return existingConnection
 	}
 
-	peerParentConnection := &DagVertexConnection{}
-	if bytes.Equal(vertexLink.PeerParentHash, targetVertexHash) {
+	nodeIdList := make([]uint64, 0)
+
+	// Consider the genesis vertex which self parent is nil, so adding this check
+	if vertexLink.SelfParentHash != nil {
+		selfParentConnection := GetOrDefaultVertexConnection(dagStorage, vertexLink.SelfParentHash, targetVertexHash, vertexLink.NodeId)
+		if selfParentConnection == nil {
+			// Self parent connection is not ready yet, wait for next round to process
+			return nil
+		} else {
+			nodeIdList = selfParentConnection.NodeIdList
+		}
+	}
+
+	if vertexLink.PeerParentHash != nil {
+
 		peerParentLink := GetVertexLink(dagStorage, vertexLink.PeerParentHash)
 		if peerParentLink != nil {
-			peerParentConnection.NodeIdList = []uint64{peerParentLink.NodeId}
+			peerParentConnection := GetOrDefaultVertexConnection(dagStorage, vertexLink.PeerParentHash, targetVertexHash, peerParentLink.NodeId)
+
+			if peerParentConnection == nil {
+				// Peer parent connection is not ready yet, wait for next round to process
+				return nil
+			} else {
+				nodeIdList = MergeUint64Array(nodeIdList, peerParentConnection.NodeIdList)
+			}
 		}
-	} else {
-		peerParentConnection = GetVertexConnection(dagStorage, vertexLink.PeerParentHash, targetVertexHash)
 	}
 
-	connectionResult.NodeIdList = MergeUint64Array(selfParentConnection.NodeIdList, peerParentConnection.NodeIdList)
-	connectionResult.NodeIdList = MergeUint64Array(connectionResult.NodeIdList, []uint64{ vertexLink.NodeId })
+	connectionResult := NewDagVertexConnection()
+
+	// merge with current node only if the previous merged list is not empty
+	if len(nodeIdList) > 0 {
+		connectionResult.NodeIdList = MergeUint64Array(nodeIdList, []uint64{ vertexLink.NodeId })
+	}
+
+	// Save it into storage
+	SetVertexConnection(dagStorage, vertexHash, targetVertexHash, connectionResult)
 
 	return connectionResult
 }
 
-func IsGenesisVertex(dagStorage *DagStorage, dagNodes *DagNodes, vertexHash []byte) bool {
+func GetOrDefaultVertexConnection(dagStorage *DagStorage, vertexHash []byte, targetVertexHash []byte, nodeId uint64) *DagVertexConnection {
+
+	if bytes.Equal(vertexHash, targetVertexHash) {
+		connectionResult := &DagVertexConnection{}
+		connectionResult.NodeIdList = []uint64 { nodeId }
+		return connectionResult
+
+	} else {
+		return GetVertexConnection(dagStorage, vertexHash, targetVertexHash)
+	}
+}
+
+func IsGenesisVertex(dagStorage *DagStorage, dagNodes *DagNodes, vertexHash []byte) (bool, uint64) {
 
 	for _, node := range dagNodes.AllNodes() {
 
@@ -592,11 +660,11 @@ func IsGenesisVertex(dagStorage *DagStorage, dagNodes *DagNodes, vertexHash []by
 		}
 
 		if bytes.Equal(genesisVertex, vertexHash) {
-			return true
+			return true, node.NodeId
 		}
 	}
 
-	return false
+	return false, 0
 }
 
 func MergeUint64Array(array1 []uint64, array2 []uint64) []uint64 {
@@ -631,4 +699,11 @@ func MergeUint64Array(array1 []uint64, array2 []uint64) []uint64 {
 	}
 
 	return result
+}
+
+func GetShortenedHash(hash []byte) string {
+
+	hashString := hex.EncodeToString(hash)
+
+	return hashString[:5] + "..." + hashString[len(hashString)-2:]
 }

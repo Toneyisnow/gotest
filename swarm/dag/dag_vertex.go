@@ -66,7 +66,11 @@ func createVertex(dagStorage *DagStorage, selfNode *DagNode, peerParent *DagVert
 	content.TimeStamp, _ = ptypes.TimestampProto(time.Now())
 
 	// Mutex to read from storage
-	lastSelfVertexHash, _ := GetLatestNodeVertex(dagStorage, selfNode.NodeId, true)
+	lastSelfVertexHash, _ := GetNodeLatestVertex(dagStorage, selfNode.NodeId, true)
+	if lastSelfVertexHash == nil {
+		return nil, errors.New("[dag] createVertex: lastest vertex is nil on node")
+	}
+
 	content.SelfParentHash = lastSelfVertexHash
 
 	if peerParent != nil {
@@ -144,8 +148,6 @@ func CreateGenesisVertex(dagStorage *DagStorage, selfNode *DagNode) (vertex *Dag
 	// Save to database
 	err = SaveVertex(dagStorage, vertex)
 
-	err = nil
 	return
 }
-
 

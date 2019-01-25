@@ -3,7 +3,6 @@ package dag
 import (
 	"../network"
 	"../storage"
-	"encoding/hex"
 	"errors"
 	"github.com/gogo/protobuf/proto"
 	"github.com/smartswarm/go/log"
@@ -86,9 +85,14 @@ func (this *DagEngine) Initialize() {
 
 func (this *DagEngine) Start() {
 
-	log.I("[dag] begin DagEngine.Start")
+	log.I("[dag] begin dag engine start...")
 
-	EnsureGenesisVertex(this.dagStorage, this.dagNodes.GetSelf())
+
+	log.I("[dag] setting up the channel callbacks.")
+	// Run every processing threads
+	go this.dagStorage.chanIncomingVertex.Listen(this.OnIncomingVertex)
+	go this.dagStorage.chanSettledVertex.Listen(this.OnSettledVertex)
+	go this.dagStorage.chanSettledQueen.Listen(this.OnSettleQueen)
 
 	this.netProcessor.StartServer()
 	this.EngineStatus = DagEngineStatus_Started
@@ -102,11 +106,11 @@ func (this *DagEngine) Start() {
 		time.Sleep(3 * time.Second)
 	}
 
-	log.I("[dag] setting up the channel callbacks.")
-	// Run every processing threads
-	go this.dagStorage.chanIncomingVertex.Listen(this.OnIncomingVertex)
-	go this.dagStorage.chanSettledVertex.Listen(this.OnSettledVertex)
-	go this.dagStorage.chanSettledQueen.Listen(this.OnSettleQueen)
+	isNewCreatedGenesis, genesisVertexHash := EnsureGenesisVertex(this.dagStorage, this.dagNodes.GetSelf())
+	if isNewCreatedGenesis {
+		incomingVertex := &DagVertexIncoming{ Hash:genesisVertexHash, IsMain:false }
+		dagStorage.chanIncomingVertex.PushProto(incomingVertex)
+	}
 
 	// Keep making sure of the connection
 	go func() {
@@ -197,6 +201,9 @@ func (this *DagEngine) SubmitPayload(data PayloadData) (err error) {
 			}
 		}
 
+		// Should process the created vertex as incoming vertex
+		this.dagStorage.chanIncomingVertex.PushProto(createdVertex)
+
 		this.composeVertexEvent(createdVertex)
 	}
 
@@ -285,7 +292,7 @@ func (this *DagEngine) OnIncomingVertex(data []byte) {
 	}
 
 	decision, missingParentVertex := ProcessIncomingVertex(this.dagStorage, this.dagNodes, incomingVertex.Hash)
-	log.I("[dag] processing incoming vertex",hex.EncodeToString(incomingVertex.Hash)," result:", decision)
+	log.I("[dag] processing incoming vertex",GetShortenedHash(incomingVertex.Hash)," result:", decision)
 
 	switch decision {
 		case ProcessResult_Yes:
@@ -330,7 +337,9 @@ func (this *DagEngine) OnSettledVertex(hash []byte) {
 		case ProcessResult_No:
 			break
 		case ProcessResult_Undecided:
-			this.processVertexDependency.SetDependency(missingParentHash, hash)
+			if missingParentHash != nil {
+				this.processVertexDependency.SetDependency(missingParentHash, hash)
+			}
 			break
 	}
 }
@@ -338,20 +347,18 @@ func (this *DagEngine) OnSettledVertex(hash []byte) {
 // Thread 3: Candidates vote for Queen and Decide Queen
 func (this *DagEngine) OnSettledCandidate(candidateHash []byte) {
 
-	log.I("[dag] begin OnSettledCandidate")
+	log.I("[dag] on settled candidate...")
 
 	// The Collect vote method will decide new queens, and write into the chanSettledQueen
 	ProcessCandidateVote(this.dagStorage, this.dagNodes, candidateHash, func(queenHash []byte) {
 		this.dagStorage.chanSettledQueen.Push(queenHash)
 	})
-
-	log.I("[dag] end OnSettledCandidate")
 }
 
 // Thread 4: Queen to decide accept/reject vertex
 func (this *DagEngine) OnSettleQueen(queenHash []byte) {
 
-	log.I("[dag] begin OnSettleQueen")
+	log.I("[dag] on settle queen...")
 
 	completed := ProcessQueenDecision(this.dagStorage, this.dagNodes, queenHash, func (vertexHash []byte, result VertexConfirmResult) {
 
@@ -374,7 +381,5 @@ func (this *DagEngine) OnSettleQueen(queenHash []byte) {
 		// If something wrong happened in processing, put the queen back to the queue and try again
 		this.dagStorage.chanSettledQueen.Push(queenHash)
 	}
-
-	log.I("[dag] end OnSettleQueen")
 }
 

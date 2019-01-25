@@ -92,7 +92,7 @@ func (this *DagEventWorker) handleVertex(vertex *DagVertex, isMain bool) {
 	// Check duplication, just ignore it
 	// TODO: Improve the logic to handle duplication, for double check and fix previous damanaged data
 	if GetVertex(this.dagEngine.dagStorage, vertex.Hash) != nil {
-		log.I("[dag] handling vertex: vertex has been found in storage, ignore it. Hash=", vertex.Hash)
+		log.I("[dag] handling vertex: vertex has been found in storage, ignore it. Hash=", GetShortenedHash(vertex.Hash))
 		return
 	}
 
@@ -103,7 +103,6 @@ func (this *DagEventWorker) handleVertex(vertex *DagVertex, isMain bool) {
 
 		// Push the vertex into next queue
 		incomingVertex := &DagVertexIncoming{ Hash:vertex.Hash, IsMain:isMain }
-
 		this.dagEngine.dagStorage.chanIncomingVertex.PushProto(incomingVertex)
 	}
 }

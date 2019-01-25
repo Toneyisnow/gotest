@@ -2,9 +2,9 @@ package network
 
 import (
 	"../common/log"
+	"github.com/decred/dcrd/dcrec/secp256k1"
 	"math/rand"
 	"strconv"
-	"github.com/decred/dcrd/dcrec/secp256k1"
 )
 
 func HandleMessage(context *NetContext, message *NetMessage) {
@@ -121,7 +121,7 @@ func HandleChallengeResponseMessage(context *NetContext, message *ChallengeRespo
 		log.I("[network] challenge response text is matching. set status to ready")
 		context.status = NetConextStatus_Ready
 	} else {
-		log.I("[network] challenge response text is not matching. set status to closed")
+		log.I("[network] challenge response text is not matching. set status to closed. got text=", message.PlainText, "text in metadata=", plainText)
 		context.status = NetConextStatus_Closed
 	}
 }

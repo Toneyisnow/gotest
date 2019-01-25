@@ -107,12 +107,16 @@ func (this *NetContext) MessageLoop() {
 
 	for {
 		message, err := this.webSocket.ReadMessage()
-		log.I("[network] context got message. type=", message.MessageType, " id=", message.MessageId)
+
 		if err != nil {
 			log.W("[network] error while read message:", err, this.device.GetHostUrl())
 			break
 		}
-		HandleMessage(this, message)
+
+		if message != nil {
+			log.I("[network] context got message. type=", message.MessageType, " id=", message.MessageId)
+			HandleMessage(this, message)
+		}
 
 		if this.status == NetConextStatus_Closed {
 			break
