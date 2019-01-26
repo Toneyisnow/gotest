@@ -22,6 +22,8 @@ import (
 
 func main() {
 
+	// MergeArrayTest()
+
 	// test_args()
 	// generate_signatures()
 
@@ -198,6 +200,26 @@ func db_test() {
 	val := table.Get([]byte("key1"))
 
 	log.I("Table got value: ", val)
+}
+
+func MergeArrayTest() {
+
+	a := []uint64 { 101, 102 }
+	b := []uint64 {}
+	log.I("merge array result:", dag.MergeUint64Array(a, b))
+
+	a = []uint64 { 101, 102 }
+	b = []uint64 { 101, 103 }
+	log.I("merge array result:", dag.MergeUint64Array(a, b))
+
+	a = []uint64 { 101, 103 }
+	b = []uint64 { 101, 102, 103 }
+	log.I("merge array result:", dag.MergeUint64Array(a, b))
+
+	a = []uint64 { 102 }
+	b = []uint64 { 103 }
+	log.I("merge array result:", dag.MergeUint64Array(a, b))
+
 }
 
 type SampleEventHandler struct {

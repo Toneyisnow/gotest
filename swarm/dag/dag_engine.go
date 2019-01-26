@@ -181,7 +181,7 @@ func (this *DagEngine) RefreshConnection() {
 	}
 }
 
-//
+// Way 1 to create new vertex: client submit payload data, and the pending payload data queue is full
 func (this *DagEngine) SubmitPayload(data PayloadData) (err error) {
 
 	log.I("[dag] submit payload...")
@@ -194,19 +194,42 @@ func (this *DagEngine) SubmitPayload(data PayloadData) (err error) {
 	createdVertex, err := CreateSelfDataVertex(dagStorage, this.dagNodes.GetSelf(), data)
 	if createdVertex != nil {
 
-		// Handle the event
-		if this.payloadHandler != nil {
-			for _, payloadData := range createdVertex.GetContent().Data {
-				this.payloadHandler.OnPayloadSubmitted(payloadData)
-			}
-		}
-
 		// Should process the created vertex as incoming vertex
-		this.dagStorage.chanIncomingVertex.PushProto(createdVertex)
+		incomingVertex := &DagVertexIncoming{ Hash: createdVertex.Hash, IsMain:false}
+		this.dagStorage.chanIncomingVertex.PushProto(incomingVertex)
 
 		this.composeVertexEvent(createdVertex)
 	}
 
+	return nil
+}
+
+// Way 2 to create new vertex: peers send main vertex, and self should create a vertex to build graph
+func (this *DagEngine) HandleIncomingMainVertex(vertexHash []byte) (err error) {
+
+	log.I("[dag] handling incoming main vertex.")
+
+	if this.EngineStatus != DagEngineStatus_Connected {
+		log.W("[dag] cannot submit payload since the dagEngine is not connected to dag.")
+		return errors.New("cannot submit payload since dagEngine is not connected to dag")
+	}
+
+	if vertexHash == nil {
+		log.W("[dag] cannot push nil main vertex.")
+		return errors.New("cannot push nil main vertex")
+	}
+
+	createdVertex, err := CreateTwoParentsVertex(dagStorage, this.dagNodes.GetSelf(), vertexHash)
+	if createdVertex != nil {
+
+		// Should process the created vertex as incoming vertex
+		incomingVertex := &DagVertexIncoming{ Hash: createdVertex.Hash, IsMain:false}
+		this.dagStorage.chanIncomingVertex.PushProto(incomingVertex)
+
+		this.composeVertexEvent(createdVertex)
+	}
+
+	/// log.I("[dag] end push incoming vertex.")
 	return nil
 }
 
@@ -237,47 +260,15 @@ func (this *DagEngine) composeVertexEvent(mainVertex *DagVertex) {
 			result := <-resultChan
 
 			if (result.Err != nil) {
-				log.I2("[dag] send event finished. result: eventId=[",result.EventId,"], err=",  result.Err.Error())
-				FlagKnownVertexForNode(this.dagStorage, peerNode, append(relatedVertexes, mainVertex))
-
+				log.I2("[dag] send event failed. result: eventId=[",result.EventId,"], err=",  result.Err.Error())
 			} else {
 				log.I2("[dag] send event succeeded. result: eventId=[",result.EventId, "]")
+				FlagKnownVertexForNode(this.dagStorage, peerNode, append(relatedVertexes, mainVertex))
 			}
 		}
 	}
 }
 
-// Threads from Workers: create vertex with this as peer parent if possible
-func (this *DagEngine) HandleIncomingMainVertex(vertexHash []byte) (err error) {
-
-	log.I("[dag] handling incoming main vertex.")
-
-	if this.EngineStatus != DagEngineStatus_Connected {
-		log.W("[dag] cannot submit payload since the dagEngine is not connected to dag.")
-		return errors.New("cannot submit payload since dagEngine is not connected to dag")
-	}
-
-	if vertexHash == nil {
-		log.W("[dag] cannot push nil main vertex.")
-		return errors.New("cannot push nil main vertex")
-	}
-
-	createdVertex, err := CreateTwoParentsVertex(dagStorage, this.dagNodes.GetSelf(), vertexHash)
-	if createdVertex != nil {
-
-		// Handle the event
-		if this.payloadHandler != nil {
-			for _, payloadData := range createdVertex.GetContent().Data {
-				this.payloadHandler.OnPayloadSubmitted(payloadData)
-			}
-		}
-
-		this.composeVertexEvent(createdVertex)
-	}
-
-	/// log.I("[dag] end push incoming vertex.")
-	return nil
-}
 
 // Thread 1: Validate the incoming vertexes and build the dag
 func (this *DagEngine) OnIncomingVertex(data []byte) {
@@ -296,6 +287,15 @@ func (this *DagEngine) OnIncomingVertex(data []byte) {
 
 	switch decision {
 		case ProcessResult_Yes:
+
+			vertex := GetVertex(dagStorage, incomingVertex.Hash)
+			// Handle the event
+			if vertex != nil && this.payloadHandler != nil {
+				for _, payloadData := range vertex.GetContent().Data {
+					this.payloadHandler.OnPayloadSubmitted(payloadData)
+				}
+			}
+
 			// Push to next channel to process
 			this.dagStorage.chanSettledVertex.Push(incomingVertex.Hash)
 

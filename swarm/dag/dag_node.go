@@ -102,6 +102,23 @@ func (this *DagNodes) GetPeerNodeById(nodeId uint64) (*DagNode) {
 	return nil
 }
 
+func (this *DagNodes) GetNodeById(nodeId uint64) (*DagNode) {
+
+	if (nodeId == 0) {
+		return nil
+	}
+
+	for _, d := range this.AllNodes() {
+
+		if (d.NodeId == nodeId) {
+			return d
+		}
+	}
+
+	return nil
+}
+
+
 func (this *DagNodes) GetNetTopology() *network.NetTopology {
 
 	topology := new(network.NetTopology)

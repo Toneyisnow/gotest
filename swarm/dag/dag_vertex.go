@@ -53,12 +53,13 @@ func CreateTwoParentsVertex(dagStorage *DagStorage, selfNode *DagNode, peerParen
 
 func createVertex(dagStorage *DagStorage, selfNode *DagNode, peerParent *DagVertex) (vertex *DagVertex, err error) {
 
+	log.I("[dag][create vertex] start to create new vertex")
+
 	if selfNode == nil {
-		log.W("[dag] createVertex: selfNode is nil.")
+		log.W("[dag][create vertex] selfNode is nil.")
 		return nil, errors.New("[dag] createVertex: selfNode is nil")
 	}
 
-	log.I("[dag] start to create new vertex")
 	vertex = new(DagVertex)
 
 	vertex.CreatorNodeId = selfNode.NodeId
@@ -68,16 +69,18 @@ func createVertex(dagStorage *DagStorage, selfNode *DagNode, peerParent *DagVert
 	// Mutex to read from storage
 	lastSelfVertexHash, _ := GetNodeLatestVertex(dagStorage, selfNode.NodeId, true)
 	if lastSelfVertexHash == nil {
-		return nil, errors.New("[dag] createVertex: lastest vertex is nil on node")
+		return nil, errors.New("[dag][create vertex] latest vertex is nil on node")
 	}
 
 	content.SelfParentHash = lastSelfVertexHash
+	log.I("[dag][create vertex] self parent=", GetShortenedHash(lastSelfVertexHash))
 
 	if peerParent != nil {
 		content.PeerParentHash = peerParent.Hash
 	} else {
 		content.PeerParentHash = nil
 	}
+	log.I("[dag][create vertex] peer parent=", GetShortenedHash(content.PeerParentHash))
 
 	dagStorage.queuePendingData.StartIterate()
 	for  {
@@ -108,7 +111,9 @@ func createVertex(dagStorage *DagStorage, selfNode *DagNode, peerParent *DagVert
 	// Clear the pending queue data
 	dagStorage.queuePendingData.Clear()
 
-	log.I("[dag] new vertex created.")
+	log.I("[dag] new vertex created. hash=", GetShortenedHash(vertex.Hash),
+		"self parent=", GetShortenedHash(vertex.Content.SelfParentHash),
+		"peer parent=", GetShortenedHash(vertex.Content.PeerParentHash))
 	err = nil
 	return
 }
