@@ -119,7 +119,7 @@ func newRocksTransactionStorage(databaseFullPath string) (*RocksStorage, error) 
 
 	return storage, nil
 }
-func (storage *RocksStorage) SeekAll(prefix []byte, f func(value []byte)) error {
+func (storage *RocksStorage) SeekAll(prefix []byte, f func(value []byte), prefixLength int) error {
 
 	iter := storage.seekableDb.NewIterator(storage.ro)
 	defer iter.Close()
@@ -127,23 +127,32 @@ func (storage *RocksStorage) SeekAll(prefix []byte, f func(value []byte)) error 
 	for iter.Seek(prefix); iter.Valid(); iter.Next() {
 
 		key := iter.Key().Data()
-		if key != nil && len(key) >= len(prefix) && bytes.Equal(key[:len(prefix)], prefix) {
+		if key != nil && len(key) >= len(prefix) && bytes.Equal(key[:prefixLength], prefix[:prefixLength]) {
 			f(iter.Value().Data())
 		}
 	}
 	return nil
 }
 
-func (storage *RocksStorage) SeekNext(prefix []byte) (key []byte, value []byte, err error) {
+func (storage *RocksStorage) SeekNext(prefix []byte, prefixLength int) (keyResult []byte, valueResult []byte, err error) {
 
 	iter := storage.seekableDb.NewIterator(storage.ro)
 	defer iter.Close()
 
 	for iter.Seek(prefix); iter.Valid(); iter.Next() {
 
-		key = iter.Key().Data()
-		if key != nil && len(key) >= len(prefix) && bytes.Equal(key[:len(prefix)], prefix) {
-			return key, iter.Value().Data(), nil
+		key := iter.Key().Data()
+		if key != nil && len(key) >= len(prefix) && bytes.Equal(key[:prefixLength], prefix[:prefixLength]) {
+
+			value := iter.Value().Data()
+
+			keyResult = make([]byte, len(key))
+			copy(keyResult, key)
+
+			valueResult = make([]byte, len(value))
+			copy(valueResult, value)
+
+			return keyResult, valueResult, nil
 		}
 	}
 

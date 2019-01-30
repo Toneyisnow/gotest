@@ -91,7 +91,7 @@ func (this *RocksSequenceQueue) Pop() (result []byte) {
 	}
 
 	bs := ConvertUint32ToBytes(this.beginIndex)
-	key, value, err := this.storage.SeekNext(this.GenerateKey(bs))
+	key, value, err := this.storage.SeekNext(this.GenerateKey(bs), this.GetContainerKeyLength())
 
 	if err != nil {
 		return
@@ -101,7 +101,7 @@ func (this *RocksSequenceQueue) Pop() (result []byte) {
 
 		this.beginIndex = 0
 		bs := ConvertUint32ToBytes(this.beginIndex)
-		key, value, err = this.storage.SeekNext(this.GenerateKey(bs))
+		key, value, err = this.storage.SeekNext(this.GenerateKey(bs), this.GetContainerKeyLength())
 
 		if key == nil || value == nil {
 			return nil
@@ -144,7 +144,7 @@ func (this *RocksSequenceQueue) IterateNext() (index uint32, result []byte) {
 	}
 
 	bs := ConvertUint32ToBytes(this.iterateIndex)
-	key, value, err := this.storage.SeekNext(this.GenerateKey(bs))
+	key, value, err := this.storage.SeekNext(this.GenerateKey(bs), this.GetContainerKeyLength())
 
 	if err != nil {
 		return 0, nil
@@ -153,7 +153,7 @@ func (this *RocksSequenceQueue) IterateNext() (index uint32, result []byte) {
 	if key == nil || value == nil {
 		this.iterateIndex = 0
 		bs := ConvertUint32ToBytes(this.iterateIndex)
-		key, value, err = this.storage.SeekNext(this.GenerateKey(bs))
+		key, value, err = this.storage.SeekNext(this.GenerateKey(bs), this.GetContainerKeyLength())
 
 		if key == nil || value == nil {
 			return 0, nil
@@ -179,7 +179,7 @@ func (this *RocksSequenceQueue) IterateNext() (index uint32, result []byte) {
 func (this *RocksSequenceQueue) Delete(index uint32) {
 
 	bs := ConvertUint32ToBytes(index)
-	key, value, err := this.storage.SeekNext(this.GenerateKey(bs))
+	key, value, err := this.storage.SeekNext(this.GenerateKey(bs), this.GetContainerKeyLength())
 
 	if err != nil {
 		return

@@ -5,7 +5,7 @@ log "github.com/sirupsen/logrus"
 )
 
 var (
-	log_level = log.DebugLevel
+	log_level = log.InfoLevel
 )
 
 // 日志，级别：调试。只在测试环境输出

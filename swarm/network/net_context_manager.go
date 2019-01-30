@@ -73,7 +73,7 @@ func (this *NetContextManager) CreateIncomingContext(socket *NetWebSocket, devic
 		}
 
 		plainText := base64.StdEncoding.EncodeToString(base.RandomBytes(30))
-		log.I("[network] generated plain text:", plainText)
+		log.D("[network] generated plain text:", plainText)
 
 		challenge, _ := secp256k1.Encrypt(publicKey, []byte(plainText))
 		context.SetMetadata("challenge_plain_text", plainText)
@@ -106,7 +106,7 @@ func (this *NetContextManager) CreateOrGetOutgoingContext(device *NetDevice) (co
 		return context, nil
 	}
 
-	log.I("[network] start creating connection to: ", device.GetHostUrl())
+	log.D("[network] start creating connection to: ", device.GetHostUrl())
 
 	clientServerHostUrl := this.netProcessor.topology.Self().GetHostUrl()
 	socket, err := StartWebSocketDial(device, clientServerHostUrl)

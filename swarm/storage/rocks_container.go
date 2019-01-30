@@ -27,6 +27,11 @@ func (this *RocksContainer) GetContainerKey() []byte {
 	return this.containerKey
 }
 
+func (this *RocksContainer) GetContainerKeyLength() int {
+
+	return len(this.GetContainerKey())
+}
+
 func (this *RocksContainer) GetMetadataKey() []byte {
 
 	if this.metadataKey == nil {

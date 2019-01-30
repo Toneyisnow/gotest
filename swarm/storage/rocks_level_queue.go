@@ -1,9 +1,11 @@
 package storage
 
 import (
+	"encoding/hex"
 	"errors"
-	"sync"
 	"github.com/golang/protobuf/proto"
+	"github.com/smartswarm/go/log"
+	"sync"
 )
 
 const (
@@ -62,6 +64,7 @@ func (this *RocksLevelQueue) Push(level uint32, value []byte) (err error) {
 	levelByte := ConvertUint32ToBytes(level)
 	bs := ConvertUint32ToBytes(this.seedIndex)
 	key := append(levelByte, bs...)
+	log.D("[storage][level queue] pushing level=", level, "value=", hex.EncodeToString(value), "subkey=", key, "key=", this.GenerateKey(key))
 
 	err = this.storage.PutSeek(this.GenerateKey(key), value)
 	if err != nil {
@@ -70,6 +73,7 @@ func (this *RocksLevelQueue) Push(level uint32, value []byte) (err error) {
 
 	this.itemCount ++
 	this.SetMetadataValueUint32("c", this.itemCount)
+	log.D("[storage][level queue] push succeeded, item count=", this.itemCount)
 
 	// Update next beginIndex
 	key64 := ConvertBytesToUint64(key)
@@ -106,21 +110,26 @@ func (this *RocksLevelQueue) Pop() (result []byte) {
 
 	if this.itemCount <= 0 {
 		// Queue is empty
+		log.W("[storage][level queue] queue is empty, nothing to pop")
 		return
 	}
 
 	bs := ConvertUint64ToBytes(this.beginIndex)
-	key, value, err := this.storage.SeekNext(this.GenerateKey(bs))
+	log.D("[storage][level queue] pop item, seeking subkey=", bs, "key=", this.GenerateKey(bs))
+	key, value, err := this.storage.SeekNext(this.GenerateKey(bs), this.GetContainerKeyLength())
 
 	if err != nil {
+		log.D("[storage][level queue] error while pop item:", err.Error())
 		return
 	}
 
 	if key == nil || value == nil {
+		log.D("[storage][level queue] pop item: key or value is nil")
 		return nil
 	}
 
 	result = value
+	log.I("[storage][level queue] pop succeeded")
 
 	// Delete the current value and move lastKey
 	this.storage.DelSeek(key)
@@ -129,9 +138,12 @@ func (this *RocksLevelQueue) Pop() (result []byte) {
 	this.itemCount = this.itemCount - 1
 	this.SetMetadataValueUint32("c", this.itemCount)
 
+	log.D("[storage][level queue] key:", key)
 	subKey := this.GetSubKey(key)
+	log.D("[storage][level queue] sub key:", subKey)
 	this.beginIndex = ConvertBytesToUint64(subKey) + 1
 	this.SetMetadataValueUint64("b", this.beginIndex)
+	log.D("[storage][level queue] update begin index to:", this.beginIndex)
 
 	return
 }
@@ -148,11 +160,12 @@ func (this *RocksLevelQueue) IterateNext() (resultIndex uint64, result []byte) {
 
 	if this.itemCount <= 0 {
 		// Queue is empty
+		log.D("[storage][level queue] iterate: queue is empty")
 		return
 	}
 
 	bs := ConvertUint64ToBytes(this.iterateIndex)
-	key, value, err := this.storage.SeekNext(this.GenerateKey(bs))
+	key, value, err := this.storage.SeekNext(this.GenerateKey(bs), this.GetContainerKeyLength())
 
 	if err != nil {
 		return
@@ -161,6 +174,8 @@ func (this *RocksLevelQueue) IterateNext() (resultIndex uint64, result []byte) {
 	if key == nil || value == nil {
 		return 0, nil
 	}
+
+	log.D("[storage][level queue] iterate: value found")
 
 	// Found value, update index
 	subKey := this.GetSubKey(key)
@@ -177,7 +192,7 @@ func (this *RocksLevelQueue) IterateNext() (resultIndex uint64, result []byte) {
 func (this *RocksLevelQueue) Delete(index uint64) {
 
 	bs := ConvertUint64ToBytes(index)
-	key, value, err := this.storage.SeekNext(this.GenerateKey(bs))
+	key, value, err := this.storage.SeekNext(this.GenerateKey(bs), this.GetContainerKeyLength())
 
 	if err != nil {
 		return

@@ -31,10 +31,10 @@ func NewDagEventHandler(engine *DagEngine) DagEventHandler {
 
 func (this DagEventHandler) HandleEventData(context *network.NetContext, rawData []byte) (err error) {
 
-	log.I("HandleEventData Start.")
+	log.I("[dag][event handler] handling event data.")
 
 	if this.dagEngine.EngineStatus != DagEngineStatus_Connected {
-		log.W("[dag] DagEngine is not in connected status, ignore this incoming event.")
+		log.W("[dag][event handler] dag engine is not in connected status, ignore this incoming event.")
 	}
 
 	dagEvent := new(DagEvent)

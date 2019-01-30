@@ -19,7 +19,7 @@ var (
 )
 
 // 初始化日志
-func init() {
+func Init() {
 	Log2File(os.Stdout)
 }
 

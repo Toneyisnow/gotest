@@ -1,9 +1,11 @@
 package main
 
 import (
+	"../gotest/swarm/common/log"
 	"../gotest/swarm/dag"
 	"../gotest/swarm/network"
 	"../gotest/swarm/storage"
+
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -14,7 +16,6 @@ import (
 	//"../gotest/swarm/storagetest"
 
 	"encoding/binary"
-	"github.com/smartswarm/go/log"
 	"os"
 	"strconv"
 	"time"
@@ -22,12 +23,16 @@ import (
 
 func main() {
 
+	log.Init()
 	// MergeArrayTest()
 
 	// test_args()
 	// generate_signatures()
 
 	// db_test()
+
+
+	log.D("debugging.")
 
 	dag_test()
 
@@ -147,12 +152,12 @@ func dag_test() {
 	engine.Start()
 
 	time.Sleep(3 * time.Second)
-	for i :=  0; i < 15; i++ {
+	for i :=  0; i < 40; i++ {
 
 		data := "" + strconv.Itoa(i)
 		engine.SubmitPayload([]byte(data))
 
-		time.Sleep(1 * time.Second)
+		time.Sleep(200 * time.Millisecond)
 	}
 }
 
@@ -170,14 +175,14 @@ func db_test() {
 	rstorage.PutSeek([]byte("key3"), []byte("333"))
 	rstorage.PutSeek([]byte("kwy4"), []byte("444"))
 	rstorage.PutSeek([]byte("key5"), []byte("555"))
-	rstorage.PutSeek([]byte("key11"), []byte("11555"))
+	rstorage.PutSeek([]byte("key22"), []byte("11555"))
 
 	data, _ := rstorage.Get([]byte("key1"))
 	log.I("data: ", data)
 
 	rstorage.SeekAll([]byte("key2"), func(v []byte) {
 		log.I("value", string(v))
-	})
+	}, 3)
 
 	sQueue := storage.NewRocksSequenceQueue(rstorage, "iiiQueue", 100)
 	sQueue.Push([]byte("111"))
@@ -193,6 +198,19 @@ func db_test() {
 	result = sQueue.Pop()
 	log.I("Pop result: ", result)
 
+	lQueue := storage.NewRocksLevelQueue(rstorage, "lllQueue", 100)
+	lQueue.Push(1, []byte("111"))
+	lQueue.Push(2, []byte("222"))
+	lQueue.Push(1, []byte("333"))
+
+	result = lQueue.Pop()
+	log.I("LevelQueue Pop result: ", result)
+	result = lQueue.Pop()
+	log.I("LevelQueue Pop result: ", result)
+	result = lQueue.Pop()
+	log.I("LevelQueue Pop result: ", result)
+	result = lQueue.Pop()
+	log.I("LevelQueue Pop result: ", result)
 
 	table := storage.NewRocksTable(rstorage, "sampleTable")
 	table.InsertOrUpdate([]byte("key1"), []byte("111"))

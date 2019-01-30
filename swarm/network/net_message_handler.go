@@ -76,8 +76,8 @@ func HandleChallengeMessage(context *NetContext, message *ChallengeMessage) {
 	privateKey, _ := secp256k1.PrivKeyFromBytes(selfDevice.PrivateKey)
 	plainTextBytes, err := secp256k1.Decrypt(privateKey, message.Challenge)
 
-	log.I("[network] handling challenge message. challenge len=", len(message.Challenge))
-	log.I("[network] decrypted plain text:", string(plainTextBytes))
+	log.D("[network] handling challenge message. challenge len=", len(message.Challenge))
+	log.D("[network] decrypted plain text:", string(plainTextBytes))
 
 	if err != nil {
 		return

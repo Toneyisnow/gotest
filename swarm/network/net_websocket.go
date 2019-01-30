@@ -33,7 +33,7 @@ func (wc *NetWebSocket) ReadMessage() (message *NetMessage, err error) {
 
 	mt, rawMessageBytes, re := wc.connection.ReadMessage()
 	log.I("[network] websocket got read message.")
-	log.I("[network] raw message bytes length: ", len(rawMessageBytes))
+	log.D("[network] raw message bytes length: ", len(rawMessageBytes))
 
 	if  re != nil {
 		err = re
@@ -42,7 +42,6 @@ func (wc *NetWebSocket) ReadMessage() (message *NetMessage, err error) {
 		err = e_unsupported_message_type
 	} else {
 
-		log.I("[network] received text message from websocket")
 		message = new(NetMessage)
 		pe := proto.Unmarshal(rawMessageBytes, message)
 		if pe != nil {

@@ -85,19 +85,20 @@ func (this *DagEngine) Initialize() {
 
 func (this *DagEngine) Start() {
 
-	log.I("[dag] begin dag engine start...")
+	log.I("[dag][engine start] begin dag engine start...")
 
 
-	log.I("[dag] setting up the channel callbacks.")
+	log.I("[dag][engine start] setting up the channel callbacks.")
 	// Run every processing threads
 	go this.dagStorage.chanIncomingVertex.Listen(this.OnIncomingVertex)
 	go this.dagStorage.chanSettledVertex.Listen(this.OnSettledVertex)
-	go this.dagStorage.chanSettledQueen.Listen(this.OnSettleQueen)
+	go this.dagStorage.chanSettledCandidate.Listen(this.OnSettledCandidate)
+	go this.dagStorage.chanSettledQueen.Listen(this.onSettledQueen)
 
 	this.netProcessor.StartServer()
 	this.EngineStatus = DagEngineStatus_Started
 
-	log.I("[dag] trying to connect to dag...")
+	log.I("[dag][engine start] trying to connect to dag...")
 	for {
 		this.RefreshConnection()
 		if this.EngineStatus == DagEngineStatus_Connected {
@@ -120,7 +121,7 @@ func (this *DagEngine) Start() {
 		}
 	}()
 
-	log.I("[dag] dag engine started.")
+	log.I("[dag][engine start] dag engine started.")
 }
 
 func (this *DagEngine) Stop() {
@@ -184,10 +185,10 @@ func (this *DagEngine) RefreshConnection() {
 // Way 1 to create new vertex: client submit payload data, and the pending payload data queue is full
 func (this *DagEngine) SubmitPayload(data PayloadData) (err error) {
 
-	log.I("[dag] submit payload...")
+	log.I("[dag][submit payload] start...")
 
 	if this.EngineStatus != DagEngineStatus_Connected {
-		log.W("[dag] cannot submit payload since the dagEngine is not connected to dag.")
+		log.W("[dag][submit payload] cannot submit payload since the dagEngine is not connected to dag.")
 		return errors.New("cannot submit payload since dagEngine is not connected to dag")
 	}
 
@@ -207,15 +208,15 @@ func (this *DagEngine) SubmitPayload(data PayloadData) (err error) {
 // Way 2 to create new vertex: peers send main vertex, and self should create a vertex to build graph
 func (this *DagEngine) HandleIncomingMainVertex(vertexHash []byte) (err error) {
 
-	log.I("[dag] handling incoming main vertex.")
+	log.D("[dag][handling incoming main vertex] start.")
 
 	if this.EngineStatus != DagEngineStatus_Connected {
-		log.W("[dag] cannot submit payload since the dagEngine is not connected to dag.")
+		log.W("[dag][handling incoming main vertex] cannot submit payload since the dagEngine is not connected to dag.")
 		return errors.New("cannot submit payload since dagEngine is not connected to dag")
 	}
 
 	if vertexHash == nil {
-		log.W("[dag] cannot push nil main vertex.")
+		log.W("[dag][handling incoming main vertex] cannot push nil main vertex.")
 		return errors.New("cannot push nil main vertex")
 	}
 
@@ -235,16 +236,16 @@ func (this *DagEngine) HandleIncomingMainVertex(vertexHash []byte) (err error) {
 
 func (this *DagEngine) composeVertexEvent(mainVertex *DagVertex) {
 
-	log.I("[dag] begin compose vertex event...")
+	log.I("[dag][compose vertex event] start...")
 
 	if mainVertex == nil {
-		log.W("[dag] mainVertex is nil, cannot compose vertex event.")
+		log.W("[dag][compose vertex event] mainVertex is nil, cannot compose vertex event.")
 		return
 	}
 
 	// Send the Vertex to 0-2 nodes
 	peerNodes := SelectPeerNodeToSendVertex(this.dagStorage, mainVertex, this.dagNodes)
-	log.I("[dag] decide to send to target nodes (count=", len(peerNodes), "):, peerNodes:", peerNodes)
+	log.D("[dag] decide to send to target nodes (count=", len(peerNodes), "):, peerNodes:", peerNodes)
 
 	if peerNodes != nil && len(peerNodes) != 0 {
 
@@ -252,7 +253,7 @@ func (this *DagEngine) composeVertexEvent(mainVertex *DagVertex) {
 
 			// Compose Vertex event and send
 			relatedVertexes, _ := FindPossibleUnknownVertexesForNode(this.dagStorage, this.dagNodes.GetSelf(), peerNode)
-			log.I("[dag] find possible unknown vertex for node", peerNode.NodeId, ", totally", len(relatedVertexes), "related vertexes found.")
+			log.D("[dag][compose vertex event] find possible unknown vertex for node", peerNode.NodeId, ", totally", len(relatedVertexes), "related vertexes found.")
 			event, _ := NewVertexEvent(mainVertex, relatedVertexes)
 			data, _ := proto.Marshal(event)
 
@@ -260,9 +261,9 @@ func (this *DagEngine) composeVertexEvent(mainVertex *DagVertex) {
 			result := <-resultChan
 
 			if (result.Err != nil) {
-				log.I2("[dag] send event failed. result: eventId=[",result.EventId,"], err=",  result.Err.Error())
+				log.I2("[dag][compose vertex event] send event failed. result: eventId=[",result.EventId,"], err=",  result.Err.Error())
 			} else {
-				log.I2("[dag] send event succeeded. result: eventId=[",result.EventId, "]")
+				log.I2("[dag][compose vertex event] send event succeeded. result: eventId=[",result.EventId, "]")
 				FlagKnownVertexForNode(this.dagStorage, peerNode, append(relatedVertexes, mainVertex))
 			}
 		}
@@ -273,17 +274,17 @@ func (this *DagEngine) composeVertexEvent(mainVertex *DagVertex) {
 // Thread 1: Validate the incoming vertexes and build the dag
 func (this *DagEngine) OnIncomingVertex(data []byte) {
 
-	log.I("[dag] handling incoming vertex...")
+	log.I("[dag][on incoming vertex] start...")
 
 	incomingVertex := &DagVertexIncoming{}
 	err := proto.Unmarshal(data, incomingVertex)
 	if err != nil || incomingVertex.Hash == nil {
-		log.W("[dag] unmarshal incoming vertex failed, skip it")
+		log.W("[dag][on incoming vertex] unmarshal incoming vertex failed, skip it")
 		return
 	}
 
 	decision, missingParentVertex := ProcessIncomingVertex(this.dagStorage, this.dagNodes, incomingVertex.Hash)
-	log.I("[dag] processing incoming vertex",GetShortenedHash(incomingVertex.Hash)," result:", decision)
+	log.I("[dag][on incoming vertex] processing incoming vertex",GetShortenedHash(incomingVertex.Hash)," result:", decision)
 
 	switch decision {
 		case ProcessResult_Yes:
@@ -321,14 +322,15 @@ func (this *DagEngine) OnIncomingVertex(data []byte) {
 // Thread 2: Mark vertex levels, and decide the candidates
 func (this *DagEngine) OnSettledVertex(hash []byte) {
 
-	log.I("[dag] on settled vertex...")
+	log.I("[dag][on settled vertex] start..")
 
 	result, missingParentHash := ProcessVertexAndDecideCandidate(this.dagStorage, this.dagNodes, hash)
-	log.I("[dag] process vertex decide candidate result:", result)
+	log.D("[dag][on settled vertex] process vertex decide candidate result:", result)
 
 	switch result {
 		case ProcessResult_Yes:
 			// Push to next channel to process
+			log.I("[dag][on settled vertex] push to candidate channel.")
 			this.dagStorage.chanSettledCandidate.Push(hash)
 
 			// Also notify all the dependency vertexes to handle
@@ -347,7 +349,7 @@ func (this *DagEngine) OnSettledVertex(hash []byte) {
 // Thread 3: Candidates vote for Queen and Decide Queen
 func (this *DagEngine) OnSettledCandidate(candidateHash []byte) {
 
-	log.I("[dag] on settled candidate...")
+	log.I("[dag][on settled candidate] start...")
 
 	// The Collect vote method will decide new queens, and write into the chanSettledQueen
 	ProcessCandidateVote(this.dagStorage, this.dagNodes, candidateHash, func(queenHash []byte) {
@@ -356,15 +358,17 @@ func (this *DagEngine) OnSettledCandidate(candidateHash []byte) {
 }
 
 // Thread 4: Queen to decide accept/reject vertex
-func (this *DagEngine) OnSettleQueen(queenHash []byte) {
+func (this *DagEngine) onSettledQueen(queenHash []byte) {
 
-	log.I("[dag] on settle queen...")
+	log.I("[dag][on settle queen] start...")
 
 	completed := ProcessQueenDecision(this.dagStorage, this.dagNodes, queenHash, func (vertexHash []byte, result VertexConfirmResult) {
 
 		// On Vertex Accepted
+		log.I("[dag][on settle queen] vertex", GetShortenedHash(vertexHash), "has been accepted, notify all payloads.")
 		vertex := GetVertex(this.dagStorage, vertexHash)
 		if vertex == nil || vertex.GetContent() == nil || vertex.GetContent().GetData() == nil {
+			log.W("[dag][on settle queen] vertex is corrupted.")
 			return
 		}
 

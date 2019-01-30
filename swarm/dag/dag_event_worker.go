@@ -68,7 +68,7 @@ func (this *DagEventWorker) Start() {
 func (this *DagEventWorker) handleVertexesDataEvent(vertexesDataEvent *VertexesDataEvent) {
 
 	if vertexesDataEvent == nil || vertexesDataEvent.MainVertex == nil {
-		log.W("[dag] handleVertexesDataEvent error: vertexesDataEvent is not complete")
+		log.W("[dag][event worker] handleVertexesDataEvent error: vertexesDataEvent is not complete")
 		return
 	}
 
@@ -92,7 +92,7 @@ func (this *DagEventWorker) handleVertex(vertex *DagVertex, isMain bool) {
 	// Check duplication, just ignore it
 	// TODO: Improve the logic to handle duplication, for double check and fix previous damanaged data
 	if GetVertex(this.dagEngine.dagStorage, vertex.Hash) != nil {
-		log.I("[dag] handling vertex: vertex has been found in storage, ignore it. Hash=", GetShortenedHash(vertex.Hash))
+		log.I("[dag][event worker] handling vertex: vertex has been found in storage, ignore it. Hash=", GetShortenedHash(vertex.Hash))
 		return
 	}
 
@@ -116,19 +116,19 @@ func (this *DagEventWorker) validateVertex(vertex *DagVertex) (result ProcessRes
 	// Confirm the hash and signature is correct
 	contentBytes, err := proto.Marshal(vertex.Content)
 	if err != nil {
-		log.W("[dag] fatal: proto Marshal content failed.")
+		log.W("[dag][event worker] fatal: proto Marshal content failed.")
 		return ProcessResult_No, nil
 	}
 
 	calculatedHash := sha256.Sum256(contentBytes)
 	if !bytes.Equal(vertex.Hash, calculatedHash[:]) {
-		log.W("[dag] handleVertex: hash value is not correct")
+		log.W("[dag][event worker] handleVertex: hash value is not correct")
 		return ProcessResult_No, nil
 	}
 
 	peerNode := this.dagEngine.dagNodes.GetPeerNodeById(vertex.CreatorNodeId)
 	if peerNode == nil {
-		log.W("[dag] handleVertex: cannot find creator node")
+		log.W("[dag][event worker] handleVertex: cannot find creator node")
 		return ProcessResult_No, nil
 	}
 
@@ -136,10 +136,10 @@ func (this *DagEventWorker) validateVertex(vertex *DagVertex) (result ProcessRes
 
 		publicKeyString := hex.EncodeToString(peerNode.Device.PublicKey)
 		signatureString := hex.EncodeToString((vertex.Signature))
-		log.W("[dag] handleVertex: signature is not matching. expected sig:[", signatureString, "] device public key:[", publicKeyString, "]")
+		log.W("[dag][event worker] handleVertex: signature is not matching. expected sig:[", signatureString, "] device public key:[", publicKeyString, "]")
 		return ProcessResult_No, nil
 	}
 
-	log.I("[dag] vertex has passed validation.")
+	log.D("[dag][event worker] vertex has passed validation.")
 	return ProcessResult_Yes, nil
 }
