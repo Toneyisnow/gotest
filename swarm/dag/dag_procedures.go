@@ -169,7 +169,7 @@ func ProcessIncomingVertex(dagStorage *DagStorage, nodes *DagNodes, vertexHash [
 		return ProcessResult_No, nil
 	}
 
-	log.I("[dag][process incoming vertex] started. vertex=", GetShortenedHash(vertexHash))
+	log.D("[dag][process incoming vertex] started. vertex=", GetShortenedHash(vertexHash))
 	vertex := GetVertex(dagStorage, vertexHash)
 
 	if vertex == nil || vertex.Hash == nil || vertex.Signature == nil ||vertex.CreatorNodeId == 0 || vertex.GetContent() == nil {
@@ -186,7 +186,7 @@ func ProcessIncomingVertex(dagStorage *DagStorage, nodes *DagNodes, vertexHash [
 	// Find parents
 	selfParentHash := vertex.GetContent().GetSelfParentHash()
 	peerParentHash := vertex.GetContent().GetPeerParentHash()
-	log.I("[dag][process incoming vetex] creator node=", creatorNode.NodeId, " self parent=", GetShortenedHash(selfParentHash), "peer parent=", GetShortenedHash(peerParentHash))
+	log.D("[dag][process incoming vetex] creator node=", creatorNode.NodeId, " self parent=", GetShortenedHash(selfParentHash), "peer parent=", GetShortenedHash(peerParentHash))
 
 	if selfParentHash == nil {
 
@@ -249,7 +249,7 @@ func ProcessIncomingVertex(dagStorage *DagStorage, nodes *DagNodes, vertexHash [
 // Table to fill: tableVertexStatus,
 func ProcessVertexAndDecideCandidate(dagStorage *DagStorage, dagNodes *DagNodes, vertexHash []byte) (result ProcessResult, missingParentHash []byte) {
 
-	log.I("[dag][process vertex decide candidate] started. vertex=", GetShortenedHash(vertexHash))
+	log.D("[dag][process vertex decide candidate] started. vertex=", GetShortenedHash(vertexHash))
 
 	link := GetVertexLink(dagStorage, vertexHash)
 	if link == nil {
@@ -364,7 +364,7 @@ func ProcessVertexAndDecideCandidate(dagStorage *DagStorage, dagNodes *DagNodes,
 		vertexStatus.IsCandidate = true
 	}
 
-	log.I("[dag][process vertex decide candidate] set status for vertex. level=", vertexStatus.Level, "isCandidate=",vertexStatus.IsCandidate, "vertex=", GetShortenedHash(vertexHash))
+	log.D("[dag][process vertex decide candidate] set status for vertex. level=", vertexStatus.Level, "isCandidate=",vertexStatus.IsCandidate, "vertex=", GetShortenedHash(vertexHash))
 
 	// Save the vertex status
 	SetVertexStatus(dagStorage, vertexHash, vertexStatus)
@@ -392,11 +392,11 @@ func ProcessVertexAndDecideCandidate(dagStorage *DagStorage, dagNodes *DagNodes,
 // 2. Iterate all undecidedCandidate, collect the votes from level-1
 func ProcessCandidateVote(dagStorage *DagStorage, dagNodes *DagNodes, nowCandidateHash []byte, onQueenFound func([]byte)) ProcessResult {
 
-	log.I("[dag][processing candidate] started. candidate hash=", GetShortenedHash(nowCandidateHash))
+	log.D("[dag][processing candidate] started. candidate hash=", GetShortenedHash(nowCandidateHash))
 	nowCandidateStatus := GetVertexStatus(dagStorage, nowCandidateHash)
 
 	if nowCandidateStatus == nil {
-		log.I("[dag][processing candidate] cannot find the status for candidate. stop processing.")
+		log.D("[dag][processing candidate] cannot find the status for candidate. stop processing.")
 		return ProcessResult_No
 	}
 
@@ -417,7 +417,7 @@ func ProcessCandidateVote(dagStorage *DagStorage, dagNodes *DagNodes, nowCandida
 
 		if nowCandidateStatus.Level >= targetCandidateStatus.Level + 10 {
 
-			log.I("[dag][candidate vote] it's coin round")
+			log.D("[dag][candidate vote] it's coin round")
 
 			// Coin round to decide Yes or No
 			// TODO: just put Yes Decision for now
@@ -430,7 +430,7 @@ func ProcessCandidateVote(dagStorage *DagStorage, dagNodes *DagNodes, nowCandida
 			yesCount := 0
 			noCount := 0
 			subLevel := nowCandidateStatus.Level - 1
-			log.I("[dag][processing candidate] collecting vote results in sub level=", subLevel)
+			log.D("[dag][processing candidate] collecting vote results in sub level=", subLevel)
 			for _, node := range dagNodes.AllNodes() {
 
 				subCandidateHash, _ := GetCandidateForNode(dagStorage, node.NodeId, subLevel, true)
@@ -447,12 +447,12 @@ func ProcessCandidateVote(dagStorage *DagStorage, dagNodes *DagNodes, nowCandida
 				}
 
 				if connection.GetNodeCount() < dagNodes.GetMajorityCount() {
-					log.I("[dag][processing candidate] connection is not strong, node count=", connection.GetNodeCount())
+					log.D("[dag][processing candidate] connection is not strong, node count=", connection.GetNodeCount())
 					continue
 				}
 
 				subDecision := GetCandidateDecision(dagStorage, subCandidateHash, targetCandidateHash)
-				log.I("[dag][processing candidate] get candidate decision", subDecision, " from", GetShortenedHash(subCandidateHash), "to", GetShortenedHash(targetCandidateHash))
+				log.D("[dag][processing candidate] get candidate decision", subDecision, " from", GetShortenedHash(subCandidateHash), "to", GetShortenedHash(targetCandidateHash))
 				switch subDecision {
 				case CandidateDecision_No:
 					noCount = noCount + 1
@@ -472,11 +472,11 @@ func ProcessCandidateVote(dagStorage *DagStorage, dagNodes *DagNodes, nowCandida
 				}
 			}
 
-			log.I("[dag][processing candidate] yes vote count:", yesCount, "no vote count:", noCount)
+			log.D("[dag][processing candidate] yes vote count:", yesCount, "no vote count:", noCount)
 
 			if yesCount >= dagNodes.GetMajorityCount() {
 
-				log.I("[dag][processing candidate] Decide YES for", GetShortenedHash(targetCandidateHash))
+				log.D("[dag][processing candidate] Decide YES for", GetShortenedHash(targetCandidateHash))
 				SetCandidateDecision(dagStorage, nowCandidateHash, targetCandidateHash, CandidateDecision_DecideYes)
 
 				// Change the candidate to queen
@@ -490,7 +490,7 @@ func ProcessCandidateVote(dagStorage *DagStorage, dagNodes *DagNodes, nowCandida
 
 			} else if noCount >= dagNodes.GetMajorityCount() {
 
-				log.I("[dag][processing candidate] Decide NO for", GetShortenedHash(targetCandidateHash))
+				log.D("[dag][processing candidate] Decide NO for", GetShortenedHash(targetCandidateHash))
 				SetCandidateDecision(dagStorage, nowCandidateHash, targetCandidateHash, CandidateDecision_DecideNo)
 
 				// Change the candidate to queen
@@ -502,13 +502,13 @@ func ProcessCandidateVote(dagStorage *DagStorage, dagNodes *DagNodes, nowCandida
 				// newQueenUpdated = ProcessResult_Yes
 
 			} else if yesCount >= noCount {
-				log.I("[dag][processing candidate] Decide to vote Yes for", GetShortenedHash(targetCandidateHash))
+				log.D("[dag][processing candidate] Decide to vote Yes for", GetShortenedHash(targetCandidateHash))
 				SetCandidateDecision(dagStorage, nowCandidateHash, targetCandidateHash, CandidateDecision_Yes)
 			} else if yesCount < noCount {
-				log.I("[dag][processing candidate] Decide to vote No for", GetShortenedHash(targetCandidateHash))
+				log.D("[dag][processing candidate] Decide to vote No for", GetShortenedHash(targetCandidateHash))
 				SetCandidateDecision(dagStorage, nowCandidateHash, targetCandidateHash, CandidateDecision_No)
 			} else {
-				log.I("[dag][processing candidate] Cannot decide to vote for", GetShortenedHash(targetCandidateHash))
+				log.D("[dag][processing candidate] Cannot decide to vote for", GetShortenedHash(targetCandidateHash))
 				SetCandidateDecision(dagStorage, nowCandidateHash, targetCandidateHash, CandidateDecision_Unknown)
 			}
 
@@ -517,10 +517,10 @@ func ProcessCandidateVote(dagStorage *DagStorage, dagNodes *DagNodes, nowCandida
 			// Vote the candidate
 			connection := GetVertexConnection(dagStorage, nowCandidateHash, targetCandidateHash)
 			if connection != nil && connection.IsConnected() {
-				log.I("[dag][processing candidate] vote Yes for vertex", GetShortenedHash(targetCandidateHash), " in sub level=", targetCandidateStatus.Level)
+				log.D("[dag][processing candidate] vote Yes for vertex", GetShortenedHash(targetCandidateHash), " in sub level=", targetCandidateStatus.Level)
 				SetCandidateDecision(dagStorage, nowCandidateHash, targetCandidateHash, CandidateDecision_Yes)
 			} else {
-				log.I("[dag][processing candidate] vote No for vertex", GetShortenedHash(targetCandidateHash), " in sub level=", targetCandidateStatus.Level)
+				log.D("[dag][processing candidate] vote No for vertex", GetShortenedHash(targetCandidateHash), " in sub level=", targetCandidateStatus.Level)
 				SetCandidateDecision(dagStorage, nowCandidateHash, targetCandidateHash, CandidateDecision_No)
 			}
 		}
@@ -541,7 +541,7 @@ func ProcessCandidateVote(dagStorage *DagStorage, dagNodes *DagNodes, nowCandida
 func ProcessQueenDecision(dagStorage *DagStorage, dagNodes *DagNodes, queenHash []byte,
 	vertexConfirmer func (vertexHash []byte, result VertexConfirmResult)) ProcessResult {
 
-	log.I("[dag][queen decision] start.")
+	log.D("[dag][queen decision] start.")
 	queenStatus := GetVertexStatus(dagStorage, queenHash)
 	if queenStatus == nil {
 		log.W("[dag][queen decision] queen status is nil.")
@@ -554,19 +554,19 @@ func ProcessQueenDecision(dagStorage *DagStorage, dagNodes *DagNodes, queenHash 
 
 		candidateHash, _ := GetCandidateForNode(dagStorage, node.NodeId, queenStatus.Level, true)
 		if candidateHash == nil {
-			log.I("[dag][queen decision] no candidate for node", node.NodeId, "in level", queenStatus.Level)
+			log.D("[dag][queen decision] no candidate for node", node.NodeId, "in level", queenStatus.Level)
 			continue
 		}
 
 		candidateStatus := GetVertexStatus(dagStorage, candidateHash)
 		if candidateStatus == nil || !candidateStatus.IsQueenDecided {
-			log.I("[dag][queen decision] isQueenDecided is false for candidate, stop processing.")
+			log.D("[dag][queen decision] isQueenDecided is false for candidate, stop processing.")
 			allCandidatesDecided = false
 			break
 		}
 
 		if candidateStatus.IsQueen {
-			log.I("[dag][queen decision] adding queen", GetShortenedHash(candidateHash), "to allQueensInLevel")
+			log.D("[dag][queen decision] adding queen", GetShortenedHash(candidateHash), "to allQueensInLevel")
 			allQueensInLevel = append(allQueensInLevel, candidateHash)
 		}
 	}
@@ -575,24 +575,24 @@ func ProcessQueenDecision(dagStorage *DagStorage, dagNodes *DagNodes, queenHash 
 
 		// Not all candidates on this level decided is queen or not, or there is no queen in this level,
 		// just pass this and do nothing
-		log.I("[dag][queen decision] not enough queen or some are not decided to do the decision, stop processing.")
+		log.D("[dag][queen decision] not enough queen or some are not decided to do the decision, stop processing.")
 		return ProcessResult_Yes
 	}
 
 	// Start iterating all the vertexes, and using the AllQueensInLevel to decide accept/reject it
 	dagStorage.levelQueueUnconfirmedVertex.StartIterate()
 	targetVertexIndex, targetVertexHash := dagStorage.levelQueueUnconfirmedVertex.IterateNext()
-	log.I("[dag][queen decision] start to confirm vertexes.")
+	log.D("[dag][queen decision] start to confirm vertexes.")
 
 	for targetVertexHash != nil {
-		log.I("[dag][queen decision] processing vertex", GetShortenedHash(targetVertexHash))
+		log.D("[dag][queen decision] processing vertex", GetShortenedHash(targetVertexHash))
 
 		hasAllConnection := true
 		for _, iQueenHash := range allQueensInLevel {
 
 			connection := GetVertexConnection(dagStorage, iQueenHash, targetVertexHash)
 			if connection == nil || !connection.IsConnected() {
-				log.I("[dag][queen decision] queen", GetShortenedHash(iQueenHash), "is not connected to vertex, stop processing")
+				log.D("[dag][queen decision] queen", GetShortenedHash(iQueenHash), "is not connected to vertex, stop processing")
 				hasAllConnection = false
 				break
 			}
@@ -600,7 +600,7 @@ func ProcessQueenDecision(dagStorage *DagStorage, dagNodes *DagNodes, queenHash 
 
 		if hasAllConnection {
 
-			log.I("[dag][queen decision] all queens are connected to this vertex, confirm as Accepted.")
+			log.D("[dag][queen decision] all queens are connected to this vertex, confirm as Accepted.")
 			vertexConfirmer(targetVertexHash, VertexConfirmResult_Accepted)
 			dagStorage.levelQueueUnconfirmedVertex.Delete(targetVertexIndex)
 		}

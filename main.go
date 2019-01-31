@@ -5,6 +5,7 @@ import (
 	"../gotest/swarm/dag"
 	"../gotest/swarm/network"
 	"../gotest/swarm/storage"
+	"../gotest/swarm/app"
 
 	"crypto/sha256"
 	"encoding/hex"
@@ -24,6 +25,8 @@ import (
 func main() {
 
 	log.Init()
+	log.D("debugging.")
+
 	// MergeArrayTest()
 
 	// test_args()
@@ -31,10 +34,10 @@ func main() {
 
 	// db_test()
 
+	app.RunSample()
 
-	log.D("debugging.")
 
-	dag_test()
+	// dag_test()
 
 	time.Sleep(5 * time.Second)
 }

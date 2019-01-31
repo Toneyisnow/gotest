@@ -189,7 +189,7 @@ func (this *DagEngine) IsOnline() bool {
 // Way 1 to create new vertex: client submit payload data, and the pending payload data queue is full
 func (this *DagEngine) SubmitPayload(data PayloadData) (err error) {
 
-	log.I("[dag][submit payload] start...")
+	log.D("[dag][submit payload] start...")
 
 	if this.EngineStatus != DagEngineStatus_Connected {
 		log.W("[dag][submit payload] cannot submit payload since the dagEngine is not connected to dag.")
@@ -265,9 +265,9 @@ func (this *DagEngine) composeVertexEvent(mainVertex *DagVertex) {
 			result := <-resultChan
 
 			if (result.Err != nil) {
-				log.I2("[dag][compose vertex event] send event failed. result: eventId=[",result.EventId,"], err=",  result.Err.Error())
+				log.W2("[dag][compose vertex event] send event failed. result: eventId=[",result.EventId,"], err=",  result.Err.Error())
 			} else {
-				log.I2("[dag][compose vertex event] send event succeeded. result: eventId=[",result.EventId, "]")
+				log.D2("[dag][compose vertex event] send event succeeded. result: eventId=[",result.EventId, "]")
 				FlagKnownVertexForNode(this.dagStorage, peerNode, append(relatedVertexes, mainVertex))
 			}
 		}
@@ -278,7 +278,7 @@ func (this *DagEngine) composeVertexEvent(mainVertex *DagVertex) {
 // Thread 1: Validate the incoming vertexes and build the dag
 func (this *DagEngine) OnIncomingVertex(data []byte) {
 
-	log.I("[dag][on incoming vertex] start...")
+	log.D("[dag][on incoming vertex] start...")
 
 	incomingVertex := &DagVertexIncoming{}
 	err := proto.Unmarshal(data, incomingVertex)
@@ -288,7 +288,7 @@ func (this *DagEngine) OnIncomingVertex(data []byte) {
 	}
 
 	decision, missingParentVertex := ProcessIncomingVertex(this.dagStorage, this.dagNodes, incomingVertex.Hash)
-	log.I("[dag][on incoming vertex] processing incoming vertex",GetShortenedHash(incomingVertex.Hash)," result:", decision)
+	log.D("[dag][on incoming vertex] processing incoming vertex",GetShortenedHash(incomingVertex.Hash)," result:", decision)
 
 	switch decision {
 		case ProcessResult_Yes:
@@ -326,7 +326,7 @@ func (this *DagEngine) OnIncomingVertex(data []byte) {
 // Thread 2: Mark vertex levels, and decide the candidates
 func (this *DagEngine) OnSettledVertex(hash []byte) {
 
-	log.I("[dag][on settled vertex] start..")
+	log.D("[dag][on settled vertex] start..")
 
 	result, missingParentHash := ProcessVertexAndDecideCandidate(this.dagStorage, this.dagNodes, hash)
 	log.D("[dag][on settled vertex] process vertex decide candidate result:", result)
@@ -334,7 +334,7 @@ func (this *DagEngine) OnSettledVertex(hash []byte) {
 	switch result {
 		case ProcessResult_Yes:
 			// Push to next channel to process
-			log.I("[dag][on settled vertex] push to candidate channel.")
+			log.D("[dag][on settled vertex] push to candidate channel.")
 			this.dagStorage.chanSettledCandidate.Push(hash)
 
 			// Also notify all the dependency vertexes to handle
@@ -353,7 +353,7 @@ func (this *DagEngine) OnSettledVertex(hash []byte) {
 // Thread 3: Candidates vote for Queen and Decide Queen
 func (this *DagEngine) OnSettledCandidate(candidateHash []byte) {
 
-	log.I("[dag][on settled candidate] start...")
+	log.D("[dag][on settled candidate] start...")
 
 	// The Collect vote method will decide new queens, and write into the chanSettledQueen
 	ProcessCandidateVote(this.dagStorage, this.dagNodes, candidateHash, func(queenHash []byte) {
@@ -364,7 +364,7 @@ func (this *DagEngine) OnSettledCandidate(candidateHash []byte) {
 // Thread 4: Queen to decide accept/reject vertex
 func (this *DagEngine) onSettledQueen(queenHash []byte) {
 
-	log.I("[dag][on settle queen] start...")
+	log.D("[dag][on settle queen] start...")
 
 	completed := ProcessQueenDecision(this.dagStorage, this.dagNodes, queenHash, func (vertexHash []byte, result VertexConfirmResult) {
 

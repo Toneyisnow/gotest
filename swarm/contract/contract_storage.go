@@ -2,6 +2,7 @@ package contract
 
 import (
 	"../storage"
+	"errors"
 	"github.com/gogo/protobuf/proto"
 	"sync"
 )
@@ -68,6 +69,10 @@ func NewContractStorage(storageLocation string) *ContractStorage {
 
 func SavePayload(contractStorage *ContractStorage, payload *ContractPayload) error {
 
+	if contractStorage == nil || payload == nil {
+		return errors.New("[contract][save payload] object is nil, save failed.")
+	}
+
 	payloadBytes, err := proto.Marshal(payload)
 	if err != nil {
 		return err
@@ -92,4 +97,36 @@ func GetPayload(contractStorage *ContractStorage, id PayloadId) *ContractPayload
 	}
 
 	return payload
+}
+
+func SaveWallet(contractStorage *ContractStorage, wallet *ContractWallet) error {
+
+	if contractStorage == nil || wallet == nil {
+		return errors.New("[contract][save wallet] object is nil, save failed.")
+	}
+
+	walletBytes, err := proto.Marshal(wallet)
+	if err != nil {
+		return err
+	}
+
+	err = contractStorage.tableWallet.InsertOrUpdate(wallet.Address, walletBytes)
+	return err
+
+}
+
+func GetWallet(contractStorage *ContractStorage, address []byte) *ContractWallet {
+
+	bytes := contractStorage.tableWallet.Get(address)
+	if bytes == nil {
+		return nil
+	}
+
+	wallet := &ContractWallet{}
+	err := proto.Unmarshal(bytes, wallet)
+	if err != nil {
+		return nil
+	}
+
+	return wallet
 }

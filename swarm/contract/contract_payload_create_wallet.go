@@ -1,8 +1,11 @@
 package contract
 
 import (
+	"errors"
+	"github.com/gogo/protobuf/proto"
 	"github.com/golang/protobuf/ptypes"
 	"github.com/smartswarm/core/crypto/secp256k1"
+	"github.com/smartswarm/go/log"
 	"time"
 )
 
@@ -23,17 +26,37 @@ func NewCreateWalletPayload(walletName string) (result *ContractPayload, private
 
 	payload.Data = &ContractPayload_CreateWalletPayload{CreateWalletPayload: createWallet}
 
-	return result, privKey;
+	return payload, privKey;
 }
 
-func (this *CreateWalletPayload) Validate() bool {
+func (this *CreateWalletPayload) Validate(storage *ContractStorage) bool {
+
+	if this.WalletAddress == nil {
+		return false
+	}
 
 	return true
 }
 
-func (this *CreateWalletPayload) Process() error {
+func (this *CreateWalletPayload) Process(storage *ContractStorage) error {
 
+	log.I("[contract] processing create wallet.")
 	// Actually create the wallet in storage
 
-	return nil
+	wallet := NewContractWallet(this.WalletName, this.WalletAddress)
+	if wallet == nil {
+		return errors.New("create new wallet failed")
+	}
+
+	walletBytes, err := proto.Marshal(wallet)
+	if err != nil {
+		return errors.New("create new wallet failed")
+	}
+
+	err = storage.tableWallet.InsertOrUpdate(wallet.Address, walletBytes)
+	if err == nil {
+		log.I("[contract] create new wallet succeeded.")
+	}
+
+	return err
 }
