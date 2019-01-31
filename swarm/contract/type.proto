@@ -1,0 +1,95 @@
+syntax = "proto3";
+
+import "google/protobuf/timestamp.proto";
+
+package contract;
+//////////////////////////////////////////////////
+// joint
+
+enum ContractPayloadType {
+
+    CreateWallet = 0;
+    Transaction = 1;
+
+}
+
+enum ContractPayloadStatus {
+
+    Unknown = 0;
+    Initialized = 1;
+    Submitted = 2;
+    Accepted = 3;
+    Rejected_By_Dag = 4;
+    Rejected = 5;
+}
+
+enum ContractPayloadDagResultType {
+
+    DagAccepted = 0;
+    DagRejected = 1;
+}
+
+enum ContractAssetType {
+
+    Cheato = 0;
+    System = 1;
+    UserDefined = 2;
+}
+
+message ContractPayload {
+
+    bytes payload_id = 1;
+
+    ContractPayloadType payload_type = 2;
+    ContractPayloadStatus payload_status = 3;
+
+    google.protobuf.Timestamp created_time = 4;
+    google.protobuf.Timestamp submitted_time = 5;
+    google.protobuf.Timestamp received_time = 6;        // This is the time that DAG has received(Accepted/Rejected) this payload
+    google.protobuf.Timestamp confirmed_time = 7;
+
+    oneof data {
+        CreateWalletPayload create_wallet_payload = 11;
+        TransactionPayload transaction_payload = 12;
+    }
+}
+message ContractPayloadDagResult {
+
+    bytes payload_data = 1;
+    ContractPayloadDagResultType result_type = 2;
+}
+
+message CreateWalletPayload {
+
+    bytes wallet_address = 1;
+    bytes wallet_public_key = 2;
+
+    string wallet_name = 3;
+}
+
+message TransactionPayload {
+
+    bytes transaction_id = 1;
+
+    bytes source_wallet_address = 2;
+    bytes destination_wallet_address = 3;
+
+    ContractAssset asset = 4;
+}
+
+message ContractWallet {
+
+    bytes address = 1;
+    bytes public_key = 2;       // This should be the same as address?
+
+    repeated ContractAssset assets = 3;
+}
+
+message ContractAssset {
+
+    uint32 asset_id = 1;
+    ContractAssetType asset_type = 2;
+
+    uint64 amount = 3;
+}
+

@@ -101,7 +101,7 @@ func (this *DagEngine) Start() {
 	log.I("[dag][engine start] trying to connect to dag...")
 	for {
 		this.RefreshConnection()
-		if this.EngineStatus == DagEngineStatus_Connected {
+		if this.IsOnline() {
 			break
 		}
 		time.Sleep(3 * time.Second)
@@ -180,6 +180,10 @@ func (this *DagEngine) RefreshConnection() {
 			break
 		}
 	}
+}
+
+func (this *DagEngine) IsOnline() bool {
+	return this.EngineStatus == DagEngineStatus_Connected
 }
 
 // Way 1 to create new vertex: client submit payload data, and the pending payload data queue is full

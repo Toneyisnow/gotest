@@ -49,14 +49,6 @@ type DagStorage struct {
 	chanSettledVertex *storage.RocksChannel
 	chanSettledCandidate *storage.RocksChannel
 	chanSettledQueen *storage.RocksChannel
-
-	/*
-	// Queue: Incoming Vertex
-	queueIncomingVertex *storage.RocksSequenceQueue
-	queueVertexDag *storage.RocksSequenceQueue
-	queueCandidate *storage.RocksSequenceQueue
-	queueQueen *storage.RocksSequenceQueue
-	*/
 }
 
 var dagStorage *DagStorage
